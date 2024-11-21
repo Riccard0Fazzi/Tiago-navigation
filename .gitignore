@@ -3,4 +3,3 @@ apriltag_ros/
 apriltag/
 CMakeLists.txt
 gazebo_ros_link_attacher/
-README.md
