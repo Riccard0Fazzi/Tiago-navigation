@@ -10,6 +10,7 @@ project(ir2324_group_24)
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
+  geometry_msgs
   actionlib
   actionlib_msgs
   tiago_iaslab_simulation
@@ -75,8 +76,9 @@ add_action_files(
 #   DEPENDENCIES
 #   std_msgs
 # )
+## Generate added messages and services with any dependencies listed here
 generate_messages(
-  DEPENDENCIES actionlib_msgs
+   DEPENDENCIES actionlib_msgs std_msgs geometry_msgs
 )
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -108,7 +110,7 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib
+  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib actionlib_msgs geometry_msgs
 )
 ###########
 ## Build ##

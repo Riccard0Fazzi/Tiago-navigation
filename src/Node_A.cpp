@@ -3,7 +3,7 @@
 #include <actionlib/client/simple_action_client.h>
 #include <ir2324_group_24/tempAction.h>
 
-typedef actionlib::SimpleActionClient<ir2324_group_24::tempAction> Client
+typedef actionlib::SimpleActionClient<ir2324_group_24::tempAction> Client;
 
 // Feedback callback function
 void feedbackCallback(const ir2324_group_24::tempFeedbackConstPtr &feedback) {
@@ -34,23 +34,17 @@ int main(int argc, char **argv)
 
 	// Send the acquired ids to Node_B
 	// test
-	actionlib::SimpleActionClient<ir2324_group_24::tempAction> ac("Node_A",true);
+	actionlib::SimpleActionClient<ir2324_group_24::tempAction> ac("Node_B",true);
 	ROS_INFO("Waiting for the Node_B to start");
 	ac.waitForServer();
 	ROS_INFO("Node_B server started, sending goal");
 	ir2324_group_24::tempGoal goal;
-	goal.apriltag_ids = srv.response.ids;
+	goal.apriltag_ids.assign(srv.response.ids.begin(),srv.response.ids.end());
 	ac.sendGoal(goal, Client::SimpleDoneCallback(), Client::SimpleActiveCallback(), &feedbackCallback);
 	bool finished_before_timeout = ac.waitForResult(ros::Duration(100.0));
 	if (finished_before_timeout) {
 		actionlib::SimpleClientGoalState state = ac.getState();
 		ROS_INFO("Action finished: %s", state.toString().c_str());
-		// Check if the goal was successfully achieved
-		if (ac.getResult()->positions) 
-			ROS_INFO("Positions obtained successfully.");
-	       	else 
-			ROS_WARN("Error in retrieving positions.");
-
 	}
        	else
 		ROS_WARN("Action did not finish before the timeout.");
