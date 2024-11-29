@@ -25,6 +25,7 @@ int main(int argc, char **argv)
 	else ROS_ERROR("Failed to call service /apriltag_ids_srv");
 
 	// Send the acquired ids to Node_B
+	// test
 	actionlib::SimpleActionClient<ir2324_24::test> ac("Node_A",true);
 	ROS_INFO("Waiting:");
     return 0;

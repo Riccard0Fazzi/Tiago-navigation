@@ -1,4 +1,4 @@
-# goal definition
+# goal definition -
 std_msgs/Header header
 int64[] apriltag_ids
 ---
