@@ -1,12 +1,11 @@
 #include "ros/ros.h"
 #include "tiago_iaslab_simulation/Objs.h"  // Include the generated service header for Objs.srv
 #include <actionlib/client/simple_action_client.h>
-#include <ir2324_group_24/tempAction.h>
+#include <ir2324_group_24/tiago_infoAction.h>
 
-typedef actionlib::SimpleActionClient<ir2324_group_24::tempAction> Client;
-
+typedef actionlib::SimpleActionClient<ir2324_group_24::tiago_infoAction> Action_Client;
 // Feedback callback function
-void feedbackCallback(const ir2324_group_24::tempFeedbackConstPtr &feedback) {
+void feedbackCallback(const ir2324_group_24::tiago_infoFeedbackConstPtr &feedback) {
     ROS_INFO("Current robot status: %s", feedback->robot_status.c_str());
 }
 
@@ -16,7 +15,7 @@ int main(int argc, char **argv)
 	ros::NodeHandle nh;
 
 	// Create a service client to call the service '/apriltag_ids_srv'
-	ros::ServiceClient client = nh.serviceClient<tiago_iaslab_simulation::Objs>("/apriltag_ids_srv");
+	ros::ServiceClient client = nh.serviceClient<tiago_iaslab_simulation::Objs> ("/apriltag_ids_srv");
 
 	// Create a service request
 	tiago_iaslab_simulation::Objs srv;
@@ -34,14 +33,14 @@ int main(int argc, char **argv)
 
 	// Send the acquired ids to Node_B
 	// test
-	actionlib::SimpleActionClient<ir2324_group_24::tempAction> ac("Node_B",true);
+	Action_Client ac("Node_B",true);
 	ROS_INFO("Waiting for the Node_B to start");
 	ac.waitForServer();
 	ROS_INFO("Node_B server started, sending goal");
-	ir2324_group_24::tempGoal goal;
+	ir2324_group_24::tiago_infoGoal goal;
 	goal.apriltag_ids.assign(srv.response.ids.begin(),srv.response.ids.end());
-	ac.sendGoal(goal, Client::SimpleDoneCallback(), Client::SimpleActiveCallback(), &feedbackCallback);
-	bool finished_before_timeout = ac.waitForResult(ros::Duration(100.0));
+	ac.sendGoal(goal, Action_Client::SimpleDoneCallback(),Action_Client::SimpleActiveCallback(), &feedbackCallback);
+	bool finished_before_timeout = ac.waitForResult();
 	if (finished_before_timeout) {
 		actionlib::SimpleClientGoalState state = ac.getState();
 		ROS_INFO("Action finished: %s", state.toString().c_str());
