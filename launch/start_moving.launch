@@ -1,7 +1,7 @@
 <launch>
   <!-- Other nodes or includes can go here -->
   <node pkg="ir2324_group_24" type="Node_A" name="Node_A" output="screen"/>
-  <node pkg="ir2324_group_24" type="Node_B" name="Node_" output="screen"/>
+  <node pkg="ir2324_group_24" type="Node_B" name="Node_B" output="screen"/>
 
   <!-- Load Global Costmap Parameters -->
   <rosparam file="$(find ir2324_group_24)/config/global_costmap.yaml" command="load" />
