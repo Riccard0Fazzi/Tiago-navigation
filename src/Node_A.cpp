@@ -1,12 +1,12 @@
 #include "ros/ros.h"
 #include "tiago_iaslab_simulation/Objs.h"  // Include the generated service header for Objs.srv
 #include <actionlib/client/simple_action_client.h>
-#include <ir2324_group_24/tiagoAction.h> // action file
+#include <ir2324_group_24/TiagoAction.h> // action file
 
-typedef actionlib::SimpleActionClient<ir2324_group_24::tiagoAction> Action_Client; // alias
+typedef actionlib::SimpleActionClient<ir2324_group_24::TiagoAction> Action_Client; // alias for the Action Client
 
-// Feedback callback function for the status of the robot
-void feedbackCallback(const ir2324_group_24::tiagoFeedbackConstPtr &feedback) {
+// Feedback callback function
+void feedbackCallback(const ir2324_group_24::TiagoFeedbackConstPtr &feedback) {
     ROS_INFO("Current robot status: %s", feedback->robot_status.c_str());
 }
 
@@ -44,14 +44,16 @@ int main(int argc, char **argv)
 	ROS_INFO("Node_B server started, sending goal");
 
 	// defining the object to store the goal
-	ir2324_group_24::tiagoGoal goal;
+	ir2324_group_24::TiagoGoal goal;
 
 	// assign to the goal object the vector of apriltag ids
-	goal.apriltag_ids.assign(srv.response.ids.begin(),srv.response.ids.end());
+	goal.apriltag_ids = std::vector<int64_t>(srv.response.ids.begin(), srv.response.ids.end());
+
+	
 
 	// send the goal object to the Node_B server
 	// the feedbackCallBack arg is the function to get the robot status from the server
-	ac.sendGoal(goal, Action_Client::SimpleDoneCallback(),Action_Client::SimpleActiveCallback(), &feedbackCallback);
+	ac.sendGoal(goal, Action_Client::SimpleDoneCallback(), Action_Client::SimpleActiveCallback(), &feedbackCallback);
 	
 	// waiting for the server for the result
 	ac.waitForResult();

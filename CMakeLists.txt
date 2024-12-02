@@ -65,7 +65,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## Generate actions in the 'action' folder
 add_action_files(
-   FILES tiago.action
+   FILES Tiago.action
    DIRECTORY action
 #   Action1.action
 #   Action2.action
@@ -125,10 +125,14 @@ include_directories(
 
 ## Add the executable for Node_A
 add_executable(Node_A src/Node_A.cpp)
+add_executable(Node_B src/Node_B.cpp)
 target_link_libraries(Node_A ${catkin_LIBRARIES})
+target_link_libraries(Node_B ${catkin_LIBRARIES})
+
 
 ## Add dependencies for the generated message files
 add_dependencies(Node_A ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(Node_B ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
