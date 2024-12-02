@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   actionlib
   actionlib_msgs
+  move_base_msgs
   tiago_iaslab_simulation
 )
 
@@ -110,7 +111,7 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib actionlib_msgs geometry_msgs
+  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib actionlib_msgs geometry_msgs move_base_msgs
 )
 ###########
 ## Build ##

@@ -1,8 +1,11 @@
 #include <ros/ros.h>
 #include <actionlib/server/simple_action_server.h>
+#include <move_base_msgs/MoveBaseAction.h>
 #include <ir2324_group_24/TiagoAction.h>
+#include <actionlib/client/simple_action_client.h>
 
 typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Action Server
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient; // alias for the Action Server
 
 class TiagoAction{
 
@@ -15,20 +18,20 @@ class TiagoAction{
 		std::string action_name_;
 		std::string tiago_status;
 		std::vector<int> goal_;
-
 	
 	public:
 		// Constructor 
 		TiagoAction(std::string name):as_(nh_, name, boost::bind(&TiagoAction::TiagoCB, this, _1), false), action_name_(name){
 			as_.start();
 			tiago_status = "Tiago ready to navigate";
+			// Call Navigation after processing the goal
 		}
 
 		// Destructor
 		~TiagoAction(void){}
 
 		// Status Callback
-		// Status Callback
+
 
 	void TiagoCB(const ir2324_group_24::TiagoGoalConstPtr &goal) {
 		ros::Rate r(1);
@@ -47,31 +50,33 @@ class TiagoAction{
 
 		// Simulate processing
 		r.sleep();
-
-		// Call Navigation after processing the goal
-		Navigation();
-
-		// Set the action as succeeded
 		as_.setSucceeded();
 	}
 
 
-	// Navigation 
-	void Navigation() {
-		ROS_INFO("Starting Navigation...");
-		if (goal_.empty()) {
-			ROS_WARN("No goals to navigate to!");
-			return;
-		}
-		for (int i = 0; i < goal_.size(); i++) {
-			ROS_INFO("Navigating to ID: %d", goal_[i]);
-		}
-	}
+
 };
 
 int main (int argc, char** argv){
 	ros::init(argc, argv, "Node_B");
 	TiagoAction tiago("Node_B");
-	ros::spin();
+	ros::init(argc,argv,"simple_navigation_goals");
+	MoveBaseClient ac_("move_base",true);
+	// wait for the action server to come up
+	while(!ac_.waitForServer(ros::Duration(5.0))){
+	ROS_INFO("Waiting for the move_base action server to come up");
+	}
+	move_base_msgs::MoveBaseGoal goal;
+	goal.target_pose.header.frame_id = "base_link";
+	goal.target_pose.header.stamp = ros::Time::now();
+	goal.target_pose.pose.position.x = 1.0;
+	goal.target_pose.pose.orientation.w = 1.0;
+	ROS_INFO("Sending goal");
+	ac_.sendGoal(goal);
+	ac_.waitForResult();
+	if(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+	ROS_INFO("Hooray, the base moved 1 meter forward");
+	else
+	ROS_INFO("The base failed to move forward 1 meter for some reason");
 	return 0;
 }

@@ -64,6 +64,7 @@
   <exec_depend>tiago_iaslab_simulation</exec_depend> 
   <build_depend>geometry_msgs</build_depend> 
   <exec_depend>geometry_msgs</exec_depend>
+<depend>move_base_msgs</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
