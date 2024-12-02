@@ -65,7 +65,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 ## Generate actions in the 'action' folder
 add_action_files(
-   FILES tiago_info.action
+   FILES tiago.action
    DIRECTORY action
 #   Action1.action
 #   Action2.action
