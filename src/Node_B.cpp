@@ -58,14 +58,21 @@ class TiagoAction{
 };
 
 int main (int argc, char** argv){
+	// create the Node_B that acts as a Server for the Node_A
 	ros::init(argc, argv, "Node_B");
+
+	// constructor
 	TiagoAction tiago("Node_B");
+
+	// create a node "simple_navigation_goals" that acts as a Client to send requests to the move_base sever
 	ros::init(argc,argv,"simple_navigation_goals");
 	MoveBaseClient ac_("move_base",true);
-	// wait for the action server to come up
-	while(!ac_.waitForServer(ros::Duration(5.0))){
-	ROS_INFO("Waiting for the move_base action server to come up");
-	}
+
+	// wait for the move_base action server to come up
+	while(!ac_.waitForServer(ros::Duration(5.0)))
+		ROS_INFO("Waiting for the move_base action server to come up");
+
+	
 	move_base_msgs::MoveBaseGoal goal;
 	goal.target_pose.header.frame_id = "base_link";
 	goal.target_pose.header.stamp = ros::Time::now();
