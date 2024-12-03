@@ -25,14 +25,24 @@ class TiagoAction{
 		std::string tiago_status;
 		std::vector<int> goal_;
 		nav_msgs::OccupancyGrid::ConstPtr global_costmap;
-		bool CostmapReady = false;	
+		bool message_received = false;	
 	public:
 		// Constructor 
-		TiagoAction(std::string name):as_(nh_, name, boost::bind(&TiagoAction::feedbackCB, this, _1), false), action_name_(name){
+		TiagoAction(std::string name):as_(nh_, name, boost::bind(&TiagoAction::feedbackCB, this, _1), false), action_name_(name)
+		{
 			as_.start();
 			tiago_status = "Tiago ready to navigate";
-			
+				
 			ros::Subscriber costmap_sub = nh_.subscribe("/move_base/local_costmap/costmap", 10, &TiagoAction::costmapCallback, this);
+			ROS_INFO("Waiting for a message...");
+			ros::Rate rate(10); 
+			while (ros::ok() && !message_received) {
+			ros::spinOnce(); // Process callbacks
+			rate.sleep();
+			}
+
+			if (message_received) ROS_INFO("Subscriber successfully received a message!");
+			
 		}
 
 
@@ -74,8 +84,8 @@ class TiagoAction{
 	
 	// Costmap callback to store the costmap data
 	void costmapCallback(const nav_msgs::OccupancyGrid::ConstPtr& costmap) {
-    	global_costmap = costmap;  // Store the costmap for later use
-	CostmapReady = true;
+		global_costmap = costmap;  // Store the costmap for later use
+		message_received = true;
 	}
 
 	// callBack to obtain the laser scan readings
@@ -108,7 +118,6 @@ class TiagoAction{
 		goal.header.frame_id = "base_link";
 		goal.header.stamp = ros::Time::now();
 		ros::Rate rate(1);
-		while(!CostmapReady){ROS_INFO("Waiting for the costmap"); rate.sleep();}
 		
 		if (!global_costmap) {
 			ROS_WARN("No costmap data available. Defaulting to straight ahead.");
@@ -158,7 +167,6 @@ int main (int argc, char** argv){
 	tf2_ros::TransformListener tf_listener(tf_buffer);
 
 	// constructor
-	TiagoAction tiago("Node_B");
 	// create a node "simple_navigation_goals" that acts as a Client to send requests to the move_base sever
 	// create a node simple_navigation_goals that acts as a Client to send requests to the move_base sever
 //	ros::init(argc,argv,"simple_navigation_goals");
@@ -168,6 +176,8 @@ int main (int argc, char** argv){
 	while(!ac.waitForServer(ros::Duration(5.0)))
 		ROS_INFO("Waiting for the move_base action server to come up");
 	ac.waitForServer();
+
+	TiagoAction tiago("Node_B");
 	ros::Rate rate(10);
 	while (ros::ok()) {
 		// Compute the next goal based on the costmap
