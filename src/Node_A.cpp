@@ -7,7 +7,7 @@ typedef actionlib::SimpleActionClient<ir2324_group_24::TiagoAction> Action_Clien
 
 // Feedback callback function
 void feedbackCallback(const ir2324_group_24::TiagoFeedbackConstPtr &feedback) {
-    ROS_INFO("Current robot status: %s", feedback->robot_status.c_str());
+    ROS_INFO("[FEEDBACK] %s", feedback->robot_status.c_str());
 }
 
 int main(int argc, char **argv)
