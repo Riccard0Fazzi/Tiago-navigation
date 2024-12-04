@@ -24,14 +24,10 @@ int main(int argc, char **argv)
 	srv.request.ready = true;  // Indicate that the request is ready for processing
 
 	// Call the service
-	if (client.call(srv))
+	if (!client.call(srv))
 	{
-		// Print the received IDs in the response
-		ROS_INFO("Received Apriltag IDs: ");
-		for (int id : srv.response.ids)
-			ROS_INFO("ID: %d", id);
+		ROS_ERROR("Failed to call service /apriltag_ids_srv");
 	}
-	else ROS_ERROR("Failed to call service /apriltag_ids_srv");
 
 	// ------------------  Send the acquired ids to Node_B ------------------------
 	
@@ -39,9 +35,7 @@ int main(int argc, char **argv)
 	Action_Client ac("Node_B",true);
 
 	// wait for the node B to start
-	ROS_INFO("Waiting for the Node_B to start");
 	ac.waitForServer();
-	ROS_INFO("Node_B server started, sending goal");
 
 	// defining the object to store the goal
 	ir2324_group_24::TiagoGoal goal;
