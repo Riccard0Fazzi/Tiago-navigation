@@ -112,7 +112,7 @@ class TiagoAction{
                 // publishing feedback
                 feedback("[Next Goal] Defined and processing ...");
                 // wait for the goal to be accomplished by move_base
-                ac.waitForResult();
+                ac.waitForResult(); // whileeee
                 // verify success
                 if(ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
                     feedback("Hooray, Tiago accomplished the goal !");
