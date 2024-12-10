@@ -4,6 +4,8 @@
 #include <actionlib/client/simple_action_client.h>
 #include <ir2324_group_24/TiagoAction.h>
 #include <sensor_msgs/LaserScan.h>
+#include <geometry_msgs/Twist.h>
+#include <tf/LinearMath/Vector3.h> //Import Vector3 to define threedimensional vectors for linear and angular velocities
 
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient; // alias for the move_base action client
 typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
@@ -23,6 +25,7 @@ class TiagoAction{
 		std::vector<int> goal_; // vector storing the AprilTags ID's to be found
         std::vector<double> scan_ranges;// containing the values of the scanner
         double scan_angle_increment; // minimum angle of the scanner
+        ros::Publisher pub; // publisher for velocity commands
         bool found_all_aprilTags = false; // its true when all AprilTags are found!
         int count = 0; // to delete 
 
@@ -53,17 +56,14 @@ class TiagoAction{
 
             // INITIALIZING EXPLORATION MODE
             
-            // initializing the move_base action client
-            MoveBaseClient move_base_ac("move_base", true);
-            //wait for the action server to come up
-            while(!move_base_ac.waitForServer(ros::Duration(5.0))){
-                ROS_INFO("Waiting for the move_base action server to come up");
-            }
+            // initializing the geometry_msgs/twist publisher
+            // to publish the new tiago velocities commands
+            pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base_controller/cmd_vel", 1);
 
 
             // ACTIVATE EXPLORATION MODE!
             ROS_INFO("[EXPLORATION MODE] activated");
-            explorationMode(move_base_ac);
+            explorationMode();
             // exploration mode deactivated: goal achieved!
             ROS_INFO("[EXPLORATION MODE] deactivated: Tiago found all AprilTags !");
             // wait for current loop to finish (1Hz)
@@ -81,7 +81,7 @@ class TiagoAction{
             scan_angle_increment = msg -> angle_increment;
         }
 
-        
+
         //------------------------ METHODS ---------------------------------
 
         // method to update tiago_status and publish the feedback
@@ -96,31 +96,24 @@ class TiagoAction{
         
         // method to compute the Next Tiago Pose to keep exploring
         // untill all AprilTags are found
-        void computeNextGoal(move_base_msgs::MoveBaseGoal &next_pose){
+        geometry_msgs::Twist computeNextVelCmd(){
             
-            // laser_scan contains the latest laser scan 
-            // point_cloud stores the latest point cloud
-            // map contains the latest map
+            // define next velocity commands
+            geometry_msgs::Twist next_cmd_vel;
 
+            //define the vector3 linear velocity parameters
+            tf::Vector3 next_linear_vel(1.0, 0, 0);
+            next_cmd_vel.linear.x = next_linear_vel.x();
+            next_cmd_vel.linear.y = next_linear_vel.y();
+            next_cmd_vel.linear.z = next_linear_vel.z();
 
-            // Compute Next Goal
-            float x = 3.0;
-            float y = 0.0;
-            float w = 1.0;
+            //define the vector3 angular velocity parameters
+             tf::Vector3 next_angular_vel(0, 0, 0);
+            next_cmd_vel.angular.x = next_angular_vel.x();
+            next_cmd_vel.angular.y = next_angular_vel.y();
+            next_cmd_vel.angular.z = next_angular_vel.z();
 
-            //set next goal
-            next_pose.target_pose.header.stamp = ros::Time::now();
-            next_pose.target_pose.pose.position.x = x;
-            next_pose.target_pose.pose.position.y = y;
-            next_pose.target_pose.pose.orientation.w = w;
-            count++;
-
-            // publish feedback about the goal
-            // define the feedback string
-            std::string next_goal_feedback = "[Next Pose] x = " + std::to_string(x) +
-                         ", y = " + std::to_string(y) +
-                         ", w = " + std::to_string(w);
-            feedback(next_goal_feedback);
+            return next_cmd_vel;
         }
 
 
@@ -129,12 +122,7 @@ class TiagoAction{
         // this method contains the whole Tiago's journey
         // towards achieving the goal: finding all AprilTags
         // contained in goal_.
-        void explorationMode( MoveBaseClient &move_base_ac){
-            // initialize the structure that will contain
-            // the next pose for Tiago to keep exploring
-            // untill all aprilTags are found!
-            move_base_msgs::MoveBaseGoal next_pose;
-            next_pose.target_pose.header.frame_id = "base_link";
+        void explorationMode(){
 
             // EXPLORATION MODE journey
             // ends when all AprilTags are found
@@ -143,22 +131,8 @@ class TiagoAction{
                 if(count==1){
                     found_all_aprilTags = true;
                 }
+                pub.publish(computeNextVelCmd());
 
-                // Compute Next Tiago Pose
-                computeNextGoal(next_pose);
-
-                // send Next Goal to move_base to move Tiago
-                move_base_ac.sendGoal(next_pose);
-                // publishing feedback
-                feedback("[Next Pose] Defined and processing ...");
-                // wait for Tiago to move to the next pose 
-                move_base_ac.waitForResult(); 
-                // verify success
-                if(move_base_ac.getState() == actionlib::SimpleClientGoalState::SUCCEEDED){
-                    feedback("Hooray, Tiago accomplished the goal !");
-                }
-                else
-                    feedback("Tiago failed to accomplish the goal");
             }
             return;
         }
