@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_ros
   tf2_geometry_msgs
+  tf
 )
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -102,8 +103,7 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib actionlib_msgs geometry_msgs move_base_msgs
-  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib actionlib_msgs geometry_msgs move_base_msgs sensor_msgs nav_msgs
+  CATKIN_DEPENDS roscpp tiago_iaslab_simulation actionlib actionlib_msgs geometry_msgs move_base_msgs sensor_msgs nav_msgs tf
 )
 ###########
 ## Build ##
