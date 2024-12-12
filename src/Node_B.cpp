@@ -25,7 +25,7 @@ class TiagoAction{
 		std::vector<int> goal_; // vector storing the AprilTags ID's to be found
         std::vector<double> scan_ranges;// containing the values of the scanner
         double scan_angle_increment; // minimum angle of the scanner
-        ros::Publisher pub; // publisher for velocity commands
+        ros::Publisher vel_cmd_pub; // publisher for velocity commands
         bool found_all_aprilTags = false; // its true when all AprilTags are found!
         int count = 0; // to delete 
 
@@ -58,7 +58,8 @@ class TiagoAction{
             
             // initializing the geometry_msgs/twist publisher
             // to publish the new tiago velocities commands
-            pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base_controller/cmd_vel", 1);
+            // and actually move Tiago's motors
+            vel_cmd_pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base_controller/cmd_vel", 1);
 
 
             // ACTIVATE EXPLORATION MODE!
@@ -72,7 +73,9 @@ class TiagoAction{
             as_.setSucceeded();
         }
 
-        // Callback for LaserScan
+        // Callback for LaserScan 
+        // this updates scan latest information
+        // every 10 Hz
         void laserScanCallback(const sensor_msgs::LaserScan::ConstPtr& msg) {
             scan_ranges.clear();
             for(size_t i = 0; i < msg -> ranges.size(); i++){
@@ -92,21 +95,25 @@ class TiagoAction{
             // publish feedback
             as_.publishFeedback(feedback_);
         }
-        
-        
-        // method to compute the Next Tiago Pose to keep exploring
-        // untill all AprilTags are found
-        geometry_msgs::Twist computeNextVelCmd(){
-            
-            // define next velocity commands
-            geometry_msgs::Twist next_cmd_vel;
 
+
+        // BEHAVIOR ONE method
+        // _______________________________
+        // simple behaviour ...
+        geometry_msgs::Twist behaviourOne(){
+            // input: laserScan (10Hz) || output: velocity commands (10Hz) 
+
+            // std::vector<double> scan_ranges; containing the values of the scanner
+            // double scan_angle_increment; angle of increment in the Tiago's view
+            // laserScan data elaboration
+
+            // define the next velocity commands for Tiago's 
+            geometry_msgs::Twist next_cmd_vel;
             //define the vector3 linear velocity parameters
             tf::Vector3 next_linear_vel(1.0, 0, 0);
             next_cmd_vel.linear.x = next_linear_vel.x();
             next_cmd_vel.linear.y = next_linear_vel.y();
             next_cmd_vel.linear.z = next_linear_vel.z();
-
             //define the vector3 angular velocity parameters
              tf::Vector3 next_angular_vel(0, 0, 0);
             next_cmd_vel.angular.x = next_angular_vel.x();
@@ -114,6 +121,46 @@ class TiagoAction{
             next_cmd_vel.angular.z = next_angular_vel.z();
 
             return next_cmd_vel;
+        }
+        
+        
+        // BEHAVIORAL CONTROL method
+        // _______________________________
+        // this method implements a Tiago
+        // velocity controller that 
+        // manages different simple 
+        // behaviours that will keep 
+        // Tiago exploring the environment
+        // before finding all AprilTags
+        void behavioralControl(){
+            // input: laserScan (10Hz) || output: velocity commands (10Hz) 
+            // (not synchronous)
+            // initialize the next velocity commands objects
+            geometry_msgs::Twist next_cmd_vel;
+            geometry_msgs::Twist behaviour_one;
+            // ecc
+
+            // Call BEHAVIOUR ONE
+            behaviour_one = behaviourOne();
+
+            // ...
+
+            // BEHAVIOURAL CONTROLLER
+            next_cmd_vel = behaviour_one;
+
+            // MOVE TIAGO
+            // publish the next velocity commands
+            vel_cmd_pub.publish(next_cmd_vel);
+            // publish feedback about velocity commands
+            feedback("NEXT VELOCITY COMMAND: \n[Linear]  | Vx = " + 
+                std::to_string(next_cmd_vel.linear.x) + "| Vy = " +
+                std::to_string(next_cmd_vel.linear.y) + "| Vz = " +
+                std::to_string(next_cmd_vel.linear.z) + "| \n" +
+                "[Angular] | Wx = " + std::to_string(next_cmd_vel.angular.x) + "| Wy = " +
+                std::to_string(next_cmd_vel.angular.y) + "| Wz = " +
+                std::to_string(next_cmd_vel.angular.z) + "|");
+
+            count++; // to delete
         }
 
 
@@ -123,16 +170,25 @@ class TiagoAction{
         // towards achieving the goal: finding all AprilTags
         // contained in goal_.
         void explorationMode(){
+            // using behavioural control 
+            feedback("[BEHAVIOURAL CONTROL] activated");
+            // Set the rate for the velocity commands to Tiago 
+            ros::Rate rate(10);
 
             // EXPLORATION MODE journey
-            // ends when all AprilTags are found
-            while(!found_all_aprilTags){
-                // to delete
-                if(count==1){
+            // ends when all AprilTags are found  
+            while(!found_all_aprilTags && ros::ok()){
+                // to delete (300, duration of test)
+                if(count==300){
                     found_all_aprilTags = true;
                 }
-                pub.publish(computeNextVelCmd());
-
+                // activate BEHAVIORAL CONTROL
+                // this control manages different simple
+                // behaviours of Tiago to explore the 
+                // environment
+                behavioralControl();
+                // Sleep to enforce the rate
+                rate.sleep();
             }
             return;
         }
@@ -146,7 +202,7 @@ class TiagoAction{
             // Start the action server
             as_.start();
             ROS_INFO("Action server [tiago_action] started.");
-            // Subscribers for LaserScan and PointCloud and Map
+            // Subscribers for LaserScan topic /scan (messages rate: 10 Hz)
             ros::Subscriber laser_scan_sub = nh_.subscribe("/scan", 1, &TiagoAction::laserScanCallback, this);
         }
 
