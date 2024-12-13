@@ -5,6 +5,11 @@
 #include <ir2324_group_24/TiagoAction.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Twist.h>
+#include <opencv2/opencv.hpp>
+#include <apriltag_ros/AprilTagDetectionArray.h>
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 #include <tf/LinearMath/Vector3.h> //Import Vector3 to define threedimensional vectors for linear and angular velocities
 
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient; // alias for the move_base action client
@@ -26,10 +31,13 @@ class TiagoAction{
         std::vector<double> scan_ranges;// containing the values of the scanner
         double scan_angle_increment; // minimum angle of the scanner
         ros::Publisher vel_cmd_pub; // publisher for velocity commands
+        ros::Subscriber laser_scan_sub = nh_.subscribe("/scan", 10, &TiagoAction::laserScanCallback, this); // subscriber for laser scanner topic
+        ros::Subscriber tag_sub = nh_.subscribe("/tag_detections", 10, &TiagoAction::tagDetectionCallback, this); // subscriber for apriltag detection
+        image_transport::Subscriber image_sub;
         bool found_all_aprilTags = false; // its true when all AprilTags are found!
         int count = 0; // to delete 
 
-        //------------------------ CALLBACK FUNCTION -----------------------------
+        //------------------------ CALLBACK FUNCTIONS -----------------------------
 
         // communication of the Tiago Action with Node_A
         // _____________________________________________
@@ -82,6 +90,45 @@ class TiagoAction{
                 scan_ranges.push_back(msg -> ranges[i]);
             }
             scan_angle_increment = msg -> angle_increment;
+            feedback("laser");
+        
+        }
+
+        // CallBack for AprilTags Detection
+        // (20 Hz)
+        // Callback function to handle detected tags
+        void tagDetectionCallback(const apriltag_ros::AprilTagDetectionArray::ConstPtr& msg) {
+            // No AprilTags found!
+            if (msg->detections.empty()) {
+                //ROS_INFO("No AprilTags detected.");
+                // returhn to terminate the callback
+                return;
+            }
+
+            for (const auto& detection : msg->detections) {
+                int id = detection.id[0]; // AprilTag ID
+                double x = detection.pose.pose.pose.position.x;
+                double y = detection.pose.pose.pose.position.y;
+                double z = detection.pose.pose.pose.position.z;
+
+                ROS_INFO("Detected tag ID: %d, Position: [%.2f, %.2f, %.2f]", id, x, y, z);
+            }
+            // update remaining AprilTags
+        }
+
+        // CallBack for displaying a Tiago's camera view 
+        // at any moment [VISUAL PURPOSE ONLY]
+        // Callback to process the RGB image (30Hz)
+        void tiagoVisualCallback(const sensor_msgs::ImageConstPtr& msg) {
+            try {
+                cv::Mat img = cv_bridge::toCvCopy(msg, "rgb8")->image;
+
+                // Optional: Display the image (for debugging purposes)
+                cv::imshow("Tiago's Perspective", img);
+                cv::waitKey(1);
+            } catch (cv_bridge::Exception& e) {
+                ROS_ERROR("Could not convert from '%s' to 'rgb8'.", msg->encoding.c_str());
+            }
         }
 
 
@@ -100,7 +147,7 @@ class TiagoAction{
         // BEHAVIOR ONE method
         // _______________________________
         // simple behaviour ...
-        geometry_msgs::Twist behaviourOne(){
+        geometry_msgs::Twist behaviorOne(){
             // input: laserScan (10Hz) || output: velocity commands (10Hz) 
 
             // std::vector<double> scan_ranges; containing the values of the scanner
@@ -137,16 +184,16 @@ class TiagoAction{
             // (not synchronous)
             // initialize the next velocity commands objects
             geometry_msgs::Twist next_cmd_vel;
-            geometry_msgs::Twist behaviour_one;
+            geometry_msgs::Twist behavior_one;
             // ecc
 
             // Call BEHAVIOUR ONE
-            behaviour_one = behaviourOne();
+            behavior_one = behaviorOne();
 
             // ...
 
             // BEHAVIOURAL CONTROLLER
-            next_cmd_vel = behaviour_one;
+            next_cmd_vel = behavior_one;
 
             // MOVE TIAGO
             // publish the next velocity commands
@@ -202,8 +249,13 @@ class TiagoAction{
             // Start the action server
             as_.start();
             ROS_INFO("Action server [tiago_action] started.");
-            // Subscribers for LaserScan topic /scan (messages rate: 10 Hz)
-            ros::Subscriber laser_scan_sub = nh_.subscribe("/scan", 1, &TiagoAction::laserScanCallback, this);
+            // Subscriber for LaserScan topic /scan (messages rate: 10 Hz)
+            //laser_scan_sub = nh_.subscribe("/scan", 10, &TiagoAction::laserScanCallback, this);
+            // Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
+            image_transport::ImageTransport it(nh_); // image transport for the camera topic
+            image_sub = it.subscribe("/xtion/rgb/image_color", 100, &TiagoAction::tiagoVisualCallback, this);
+            // Subscriber to the AprilTag detection topic (messages rate: 20 Hz)
+            //tag_sub = nh_.subscribe("/tag_detections", 10, &TiagoAction::tagDetectionCallback, this);
         }
 
 		// Destructor
