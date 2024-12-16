@@ -10,8 +10,9 @@
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
+#include <trajectory_msgs/JointTrajectory.h>
+#include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <tf/LinearMath/Vector3.h> //Import Vector3 to define threedimensional vectors for linear and angular velocities
-#include <string> // just for visual debugging purpose
 
 typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
 
@@ -31,13 +32,18 @@ class TiagoAction{
         std::vector<double> scan_ranges;// containing the values of the scanner
         double scan_angle_increment; // minimum increment in the angles of the scanner
         double scan_angle_min; // initial angle of the scanner
-        double tiago_shape = 0.2; // distance from Tiago base frame and Tiago's perimeter in meters
+        double tiago_shape; // distance from Tiago base frame and Tiago's perimeter in meters
         ros::Publisher vel_cmd_pub; // publisher for velocity commands
+        ros::Publisher tilt_cam_pub; // publisher for the initial tilt of the camera
         ros::Subscriber laser_scan_sub; // subscriber for laser scanner topic
         ros::Subscriber tag_sub; // subscriber for apriltag detection
         image_transport::Subscriber image_sub; // subscriber for camera 
-        bool found_all_aprilTags = false; // its true when all AprilTags are found!
-        int count = 0; // to delete 
+        double OBSTACLE_DISTANCE_THRESHOLD; // Threshold to avoid obstacles (meters)
+        double FORWARD_LINEAR_SPEED;       // Forward linear speed (m/s)
+        double REPULSION_SCALE;    // Scale factor for repulsion
+        double LONG_DISTANCE_SCALE;
+        double SHORT_DISTANCE_SCALE;
+        bool found_all_aprilTags; // its true when all AprilTags are found!
 
         //------------------------ CALLBACK FUNCTIONS -----------------------------
 
@@ -64,12 +70,14 @@ class TiagoAction{
             // set status as ready
             feedback("Tiago ready to navigate");
 
+            // INITIALIZE CAMERA 
+            initializeCamera();
 
             // ACTIVATE EXPLORATION MODE!
-            ROS_INFO("[EXPLORATION MODE] activated");
+            feedback("[EXPLORATION MODE] activated");
             explorationMode();
             // exploration mode deactivated: goal achieved!
-            ROS_INFO("[EXPLORATION MODE] deactivated: Tiago found all AprilTags !");
+            feedback("[EXPLORATION MODE] deactivated: Tiago found all AprilTags !");
             // wait for current loop to finish (1Hz)
             r.sleep();
             // sets the goal as succeded to Node_A, which terminates!
@@ -103,18 +111,32 @@ class TiagoAction{
                 return;
             }
 
-            for (const auto& detection : msg->detections) {
-                int id = detection.id[0]; // AprilTag ID
-                double x = detection.pose.pose.pose.position.x;
-                double y = detection.pose.pose.pose.position.y;
-                double z = detection.pose.pose.pose.position.z;
-
-                feedback("Detected tag ID: " + std::to_string(id) + ", Position: [" + 
+            int id = msg->detections[0].id[0]; // AprilTag ID found
+            double x = msg->detections[0].pose.pose.pose.position.x;
+            double y = msg->detections[0].pose.pose.pose.position.y;
+            double z = msg->detections[0].pose.pose.pose.position.z;
+            
+            // update remaining AprilTags
+            // Search for found id in the goal_ vector
+            // containing all aprilTags to find
+            auto it = std::find(goal_.begin(), goal_.end(), id); 
+            // if it found the aprilTag in the vector remove it!
+            if (it != goal_.end()) {
+                goal_.erase(it); // Remove the found AprilTag
+                //ROS_INFO("goal_ size after removal: %d",goal_.size());
+                // print the found aprilTag
+                feedback("[NEW APRILTAG FOUND] ID: " + std::to_string(id) + ", Position: [" + 
                         std::to_string(x) + ", " + 
                         std::to_string(y) + ", " + 
                         std::to_string(z) + "]");
             }
-            // update remaining AprilTags
+
+            // Conversion of aprilTag pose from camera_frame to base_link
+
+            // check if Tiago found all aprilTags and terminate program if so
+            if(goal_.size()==0){
+                found_all_aprilTags = true;
+            }
         }
 
         // CallBack for displaying a Tiago's camera view 
@@ -125,7 +147,7 @@ class TiagoAction{
                 cv::Mat img = cv_bridge::toCvCopy(msg, "rgb8")->image;
 
                 // Optional: Display the image (for debugging purposes)
-                cv::imshow("Tiago's Perspective", img);
+                cv::imshow("Tiago Eyes", img);
                 cv::waitKey(1);
             } catch (cv_bridge::Exception& e) {
                 ROS_ERROR("Could not convert from '%s' to 'rgb8'.", msg->encoding.c_str());
@@ -144,11 +166,59 @@ class TiagoAction{
             as_.publishFeedback(feedback_);
         }
 
+        // method to initialize the camera, it tilts the camera 
+        // enough to view the aprilTags while exploring
+        void initializeCamera(){
+            // define rate for the initialization operation
+            ros::Rate cam_init_r(1);
+            feedback("Initialize camera ...");
+            // initialize object containing the command to
+            // send to Tiago
+            trajectory_msgs::JointTrajectory tilt_cmd;
+            trajectory_msgs::JointTrajectoryPoint point;
+            // set the tilt command 
+            tilt_cmd.joint_names = {"head_1_joint","head_2_joint"};
+            point.positions = {0.0,-13.0};
+            point.time_from_start = ros::Duration(1.0);
+            tilt_cmd.points.push_back(point);
+            // send the tilt command to Tiago
+            tilt_cam_pub.publish(tilt_cmd);
+            // wait for Tiago to incline the camera ..
+            cam_init_r.sleep();
+            // publish feedback
+            feedback("[Camera-Initialized]");
+        }
+
+        // method to update Tiago velocity based on long distances detected
+        void accelerator(){
+            // like manual drive depending on straight distance ahead
+
+            // pick the minimum distance in a range of values near the forward direction 
+            double straight_free_distance = 1000;
+            for(size_t i = (scan_ranges.size()/2)-4; i < (scan_ranges.size()/2) + 4; i++)
+            {
+                if(scan_ranges[i] < straight_free_distance)
+                    straight_free_distance=scan_ranges[i];
+
+            }
+            // if 5 meters free in front of thiago
+            if(straight_free_distance > 5){
+                // assign new x speed proportional to straight distance
+                FORWARD_LINEAR_SPEED = LONG_DISTANCE_SCALE * straight_free_distance;
+                //ROS_INFO("FORWARD_LINEAR_SPEED = %f",FORWARD_LINEAR_SPEED);
+            }
+            // if not 5 meters free in front of tiago 
+            // set obstacle avoidance speed = 0.1 m/s
+            else{
+                FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE + straight_free_distance/5;
+            }
+                
+        }
 
         // EXPLORE BEHAVIOR method
         // __________________________________________________
         // wandering + obstacle avoidance 
-        geometry_msgs::Twist exploreBehavior(const double OBSTACLE_DISTANCE_THRESHOLD, const double FORWARD_LINEAR_SPEED, const double REPULSION_SCALE){
+        geometry_msgs::Twist exploreBehavior(){
             // input: laserScan (10Hz) || output: velocity commands (10Hz) 
 
             // define object to contain velocity commands
@@ -165,32 +235,28 @@ class TiagoAction{
             // Compute repulsion from obstacles
             for (size_t i = 0; i < scan_ranges.size(); ++i) {
                 double distance = scan_ranges[i];
+                // obstacle detected at distance
                 if (distance < OBSTACLE_DISTANCE_THRESHOLD && distance > tiago_shape) {
-                    feedback(std::to_string(distance));
+                    //feedback(std::to_string(distance));
                     // Calculate repulsion angle based on scan index
                     double angle = scan_angle_min + i * scan_angle_increment;
                     double repulsion = REPULSION_SCALE / distance;  // Stronger repulsion when closer
                     repulsive_angular_velocity += -repulsion * sin(angle);  // Summing angular effects
                 }
             }
+            // Obstacle detected: turn away using repulsive forces
+            next_cmd_vel.angular.z = repulsive_angular_velocity;
+            //feedback("Repelling from obstacles.");
+            //double random_wiggle = ((rand() % 200) - 100) / 1000.0; // Random value between -0.1 and 0.1
+            //next_cmd_vel.angular.z = random_wiggle;
 
-            if (std::abs(repulsive_angular_velocity) > 0.0) {
-                // Obstacle detected: turn away using repulsive forces
-                next_cmd_vel.angular.z = repulsive_angular_velocity;
-                feedback("Repelling from obstacles.");
-            }
-            else{
-                // Random wandering
-                double random_wiggle = ((rand() % 200) - 100) / 1000.0; // Random value between -0.1 and 0.1
-                next_cmd_vel.angular.z = random_wiggle;
-                feedback("No obstacles. Wandering...");
-            }
             // always moving forward 
             next_cmd_vel.linear.x = FORWARD_LINEAR_SPEED;
 
             return next_cmd_vel;
         }
         
+        // 
         
         // BEHAVIORAL CONTROL method
         // _______________________________
@@ -205,10 +271,6 @@ class TiagoAction{
             // (not synchronous)
 
             // INITIALIZATION
-            // Initialize exploring-behavior parameters
-            const double OBSTACLE_DISTANCE_THRESHOLD = 0.35; // Threshold to avoid obstacles (meters)
-            const double FORWARD_LINEAR_SPEED = 0.1;       // Forward linear speed (m/s)
-            const double REPULSION_SCALE = 0.05;    // Scale factor for repulsion
 
             // initialize the next velocity commands objects
             geometry_msgs::Twist next_cmd_vel;
@@ -216,10 +278,8 @@ class TiagoAction{
             // ecc
 
             // Call the EXPLORING BEHAVIOUR 
-            explore_behavior = exploreBehavior(OBSTACLE_DISTANCE_THRESHOLD,
-                                         FORWARD_LINEAR_SPEED, REPULSION_SCALE);
-
-            // ...
+            accelerator();
+            explore_behavior = exploreBehavior();
 
             // BEHAVIOURAL CONTROLLER
             next_cmd_vel = explore_behavior;
@@ -227,16 +287,14 @@ class TiagoAction{
             // [MOVE TIAGO]
             // publish the next velocity commands
             vel_cmd_pub.publish(next_cmd_vel);
+            /*
             // publish feedback about velocity commands
             feedback("[NEXT VELOCITY CMD] \n[Linear]  | Vx = " + 
-                std::to_string(next_cmd_vel.linear.x) + "| Vy = " +
-                std::to_string(next_cmd_vel.linear.y) + "| Vz = " +
-                std::to_string(next_cmd_vel.linear.z) + "| \n" +
-                "[Angular] | Wx = " + std::to_string(next_cmd_vel.angular.x) + "| Wy = " +
-                std::to_string(next_cmd_vel.angular.y) + "| Wz = " +
+                std::to_string(next_cmd_vel.linear.x) + "| \n" +
+                "[Angular] | Wz = " +
                 std::to_string(next_cmd_vel.angular.z) + "|");
-
-            count++; // to delete
+            */
+            //count++; // to delete
         }
 
 
@@ -246,18 +304,20 @@ class TiagoAction{
         // towards achieving the goal: finding all AprilTags
         // contained in goal_.
         void explorationMode(){
-            // using behavioural control 
-            feedback("[BEHAVIORAL CONTROL] activated");
             // Set the rate for the velocity commands to Tiago 
             ros::Rate rate(10);
+        
+            // using behavioural control 
+            feedback("[BEHAVIORAL CONTROL] activated");
 
             // EXPLORATION MODE journey
             // ends when all AprilTags are found  
             while(!found_all_aprilTags && ros::ok()){
+                /*
                 // to delete (300, duration of test)
                 if(count==300){
                     found_all_aprilTags = true;
-                }
+                }*/
                 // activate BEHAVIORAL CONTROL
                 // this control manages different simple
                 // behaviours of Tiago to explore the 
@@ -275,6 +335,15 @@ class TiagoAction{
 		// Constructor 
 		TiagoAction(std::string name):as_(nh_, name, boost::bind(&TiagoAction::tiagoActionCB, this, _1), false), action_name_(name)
 		{
+            // Initialize parameters
+            tiago_shape = 0.2; // below it's tiago's body
+            OBSTACLE_DISTANCE_THRESHOLD = 0.35; // below it's an obstacle
+            FORWARD_LINEAR_SPEED = 0.0; // initial straight speed
+            REPULSION_SCALE = 0.3; // how much the obstacle count to go in opposite direction
+            LONG_DISTANCE_SCALE = 0.5; // acceleration scale for long distance travel
+            SHORT_DISTANCE_SCALE = 0.1; // acceleration scale for short distance attention
+            found_all_aprilTags = false; // no AprilTags found yet, start looking for them
+
             // Start the action server
             as_.start();
             ROS_INFO("Action server [tiago_action] started.");
@@ -290,6 +359,9 @@ class TiagoAction{
             // to publish the new tiago velocities commands
             // and actually move Tiago's motors
             vel_cmd_pub = nh_.advertise<geometry_msgs::Twist>("/mobile_base_controller/cmd_vel", 1);
+            // publisher for the initial tilt of the camera 
+            // to be ready to detect aprilTags
+            tilt_cam_pub = nh_.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
         }
 
 		// Destructor

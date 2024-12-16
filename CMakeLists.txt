@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_geometry_msgs
   tf
   apriltag_ros
+  control_msgs
 )
 find_package(OpenCV REQUIRED)
 ## System dependencies are found with CMake's conventions
