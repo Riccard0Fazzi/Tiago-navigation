@@ -11,6 +11,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <tf/LinearMath/Vector3.h> //Import Vector3 to define threedimensional vectors for linear and angular velocities
+#include <string> // just for visual debugging purpose
 
 typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
 
@@ -30,6 +31,7 @@ class TiagoAction{
         std::vector<double> scan_ranges;// containing the values of the scanner
         double scan_angle_increment; // minimum increment in the angles of the scanner
         double scan_angle_min; // initial angle of the scanner
+        double tiago_shape = 0.2; // distance from Tiago base frame and Tiago's perimeter in meters
         ros::Publisher vel_cmd_pub; // publisher for velocity commands
         ros::Subscriber laser_scan_sub; // subscriber for laser scanner topic
         ros::Subscriber tag_sub; // subscriber for apriltag detection
@@ -144,10 +146,8 @@ class TiagoAction{
 
 
         // EXPLORE BEHAVIOR method
-        // _________________________________________________
-        // simple behaviour to explore the environment:
-        // [wandering] linear motion + random wiggle
-        // [avoid-obstacles] Attractive and Repulsive Fields
+        // __________________________________________________
+        // wandering + obstacle avoidance 
         geometry_msgs::Twist exploreBehavior(const double OBSTACLE_DISTANCE_THRESHOLD, const double FORWARD_LINEAR_SPEED, const double REPULSION_SCALE){
             // input: laserScan (10Hz) || output: velocity commands (10Hz) 
 
@@ -165,29 +165,28 @@ class TiagoAction{
             // Compute repulsion from obstacles
             for (size_t i = 0; i < scan_ranges.size(); ++i) {
                 double distance = scan_ranges[i];
-                if (distance < OBSTACLE_DISTANCE_THRESHOLD) {
+                if (distance < OBSTACLE_DISTANCE_THRESHOLD && distance > tiago_shape) {
+                    feedback(std::to_string(distance));
                     // Calculate repulsion angle based on scan index
                     double angle = scan_angle_min + i * scan_angle_increment;
                     double repulsion = REPULSION_SCALE / distance;  // Stronger repulsion when closer
-                    repulsive_angular_velocity += repulsion * sin(angle);  // Summing angular effects
+                    repulsive_angular_velocity += -repulsion * sin(angle);  // Summing angular effects
                 }
             }
 
             if (std::abs(repulsive_angular_velocity) > 0.0) {
                 // Obstacle detected: turn away using repulsive forces
-                next_cmd_vel.linear.x = 0.0;
                 next_cmd_vel.angular.z = repulsive_angular_velocity;
                 feedback("Repelling from obstacles.");
-            } else {
-                // No close obstacles: move forward with a random wandering motion
-                next_cmd_vel.linear.x = FORWARD_LINEAR_SPEED;
-
+            }
+            else{
                 // Random wandering
                 double random_wiggle = ((rand() % 200) - 100) / 1000.0; // Random value between -0.1 and 0.1
                 next_cmd_vel.angular.z = random_wiggle;
-
                 feedback("No obstacles. Wandering...");
             }
+            // always moving forward 
+            next_cmd_vel.linear.x = FORWARD_LINEAR_SPEED;
 
             return next_cmd_vel;
         }
@@ -207,9 +206,9 @@ class TiagoAction{
 
             // INITIALIZATION
             // Initialize exploring-behavior parameters
-            const double OBSTACLE_DISTANCE_THRESHOLD = 0.1; // Threshold to avoid obstacles (meters)
-            const double FORWARD_LINEAR_SPEED = 0.2;       // Forward linear speed (m/s)
-            const double REPULSION_SCALE = 0.1;    // Wandering angular wiggle (rad/s)
+            const double OBSTACLE_DISTANCE_THRESHOLD = 0.35; // Threshold to avoid obstacles (meters)
+            const double FORWARD_LINEAR_SPEED = 0.1;       // Forward linear speed (m/s)
+            const double REPULSION_SCALE = 0.05;    // Scale factor for repulsion
 
             // initialize the next velocity commands objects
             geometry_msgs::Twist next_cmd_vel;
@@ -256,7 +255,7 @@ class TiagoAction{
             // ends when all AprilTags are found  
             while(!found_all_aprilTags && ros::ok()){
                 // to delete (300, duration of test)
-                if(count==200){
+                if(count==300){
                     found_all_aprilTags = true;
                 }
                 // activate BEHAVIORAL CONTROL
