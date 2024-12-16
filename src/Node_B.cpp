@@ -96,7 +96,7 @@ class TiagoAction{
             // retrieve the scan constant angle increment 
             scan_angle_increment = msg -> angle_increment;
             // retrieve the scan constant initial angle
-            scan_angle_min = msg -> angle_min;
+            scan_angle_min = msg->angle_min;
         
         }
 
@@ -172,6 +172,10 @@ class TiagoAction{
             // define rate for the initialization operation
             ros::Rate cam_init_r(1);
             feedback("Initialize camera ...");
+            // waiting for subscribers to /head_controller/command
+            while(tilt_cam_pub.getNumSubscribers() == 0 && ros::ok()){
+                cam_init_r.sleep();
+            }
             // initialize object containing the command to
             // send to Tiago
             trajectory_msgs::JointTrajectory tilt_cmd;
@@ -204,13 +208,20 @@ class TiagoAction{
             // if 5 meters free in front of thiago
             if(straight_free_distance > 5){
                 // assign new x speed proportional to straight distance
+                // using a gretaer scale
                 FORWARD_LINEAR_SPEED = LONG_DISTANCE_SCALE * straight_free_distance;
+                OBSTACLE_DISTANCE_THRESHOLD = 0.35; // set long distance travel thresholding
+                REPULSION_SCALE = 0.3; // set the scale of the repulsary contribute for long distance travel
                 //ROS_INFO("FORWARD_LINEAR_SPEED = %f",FORWARD_LINEAR_SPEED);
             }
             // if not 5 meters free in front of tiago 
             // set obstacle avoidance speed = 0.1 m/s
             else{
+                // assign new x speed proportional to straight distance 
+                // using a smaller scale
                 FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE + straight_free_distance/5;
+                OBSTACLE_DISTANCE_THRESHOLD = 0.6; // set short distance attention thresholding
+                REPULSION_SCALE = 0.15; // set the scale of the repulsary contribute for short distance attention
             }
                 
         }
@@ -242,6 +253,7 @@ class TiagoAction{
                     double angle = scan_angle_min + i * scan_angle_increment;
                     double repulsion = REPULSION_SCALE / distance;  // Stronger repulsion when closer
                     repulsive_angular_velocity += -repulsion * sin(angle);  // Summing angular effects
+
                 }
             }
             // Obstacle detected: turn away using repulsive forces
@@ -275,9 +287,10 @@ class TiagoAction{
             // initialize the next velocity commands objects
             geometry_msgs::Twist next_cmd_vel;
             geometry_msgs::Twist explore_behavior;
-            // ecc
+            // ecc  
 
             // Call the EXPLORING BEHAVIOUR 
+            // 
             accelerator();
             explore_behavior = exploreBehavior();
 
@@ -339,7 +352,7 @@ class TiagoAction{
             tiago_shape = 0.2; // below it's tiago's body
             OBSTACLE_DISTANCE_THRESHOLD = 0.35; // below it's an obstacle
             FORWARD_LINEAR_SPEED = 0.0; // initial straight speed
-            REPULSION_SCALE = 0.3; // how much the obstacle count to go in opposite direction
+            REPULSION_SCALE = 0.1; // how much the obstacle count to go in opposite direction
             LONG_DISTANCE_SCALE = 0.5; // acceleration scale for long distance travel
             SHORT_DISTANCE_SCALE = 0.1; // acceleration scale for short distance attention
             found_all_aprilTags = false; // no AprilTags found yet, start looking for them
