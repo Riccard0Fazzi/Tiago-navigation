@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   tf2_ros
   tf2_geometry_msgs
+  control_msgs
 )
 
 find_package(OpenCV REQUIRED)
@@ -123,7 +124,7 @@ add_executable(Node_A src/Node_A.cpp)
 add_executable(Node_B src/Node_B.cpp)
 add_executable(CameraTest src/CameraTest.cpp)
 target_link_libraries(Node_A ${catkin_LIBRARIES})
-target_link_libraries(Node_B ${catkin_LIBRARIES})
+target_link_libraries(Node_B ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 target_link_libraries(CameraTest ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 ## Add dependencies for the generated message files
 add_dependencies(Node_A ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

@@ -90,9 +90,11 @@
   <exec_depend>cv_bridge</exec_depend>
   <exec_depend>image_transport</exec_depend>
   <exec_depend>opencv4</exec_depend>
-
 <build_depend>apriltag_ros</build_depend>
 <exec_depend>apriltag_ros</exec_depend>
+
+	<!--to change the head orientation -->
+<depend>control_msgs</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
