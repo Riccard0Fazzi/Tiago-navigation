@@ -39,10 +39,11 @@ class TiagoAction{
         ros::Subscriber tag_sub; // subscriber for apriltag detection
         image_transport::Subscriber image_sub; // subscriber for camera 
         double OBSTACLE_DISTANCE_THRESHOLD; // Threshold to avoid obstacles (meters)
+        double ESCAPE_DISTANCE_THRESHOLD; // Threshold for escape directions (meters)
         double FORWARD_LINEAR_SPEED;       // Forward linear speed (m/s)
         double REPULSION_SCALE;    // Scale factor for repulsion
         double ATTRACTION_SCALE;    // Scale factor for attraction
-        double LONG_DISTANCE_SCALE;
+        double LONG_DISTANCE_SCALE; // scale factor for acceleration
         double SHORT_DISTANCE_SCALE;
         bool found_all_aprilTags; // its true when all AprilTags are found!
 
@@ -165,7 +166,7 @@ class TiagoAction{
             as_.publishFeedback(feedback_);
         }
 
-        // method to initialize the camera, it tilts the camera 
+        // method to initialize the camera, tilting the camera 
         // enough to view the aprilTags while exploring
         void initializeCamera(){
             // define rate for the initialization operation
@@ -192,7 +193,8 @@ class TiagoAction{
             feedback("[Camera-Initialized]");
         }
 
-        // method to update Tiago velocity based on long distances detected
+        // method to update Tiago's explore behavior parameters
+        // to achieve a control of smaller behaviors
         void behavioralControl(){
 
             // PROCESSING DATA FOR EACH BEHAVIOR
@@ -205,37 +207,57 @@ class TiagoAction{
 
             }
 
-            // BEHAVIOR ONE: if Tiago has 5 meters ahead move straight fast: "corridor behavior"
+            // BEHAVIOR ONE: follow corridor
+            // if Tiago has 5 meters ahead move straight fast: "corridor behavior"
             if(straight_free_distance > 5){
                 // assign new x speed proportional to straight distance
                 // using a gretaer scale
                 FORWARD_LINEAR_SPEED = LONG_DISTANCE_SCALE * straight_free_distance;
                 // set long distance travel thresholding
                 OBSTACLE_DISTANCE_THRESHOLD = 0.35; 
-
-                REPULSION_SCALE = 0.1; // set the scale of the repulsary contribute for long distance travel
-                ATTRACTION_SCALE = 0.01; // set a lower scale of attractive contribute since Tiago is already in the right direction
-                //ROS_INFO("FORWARD_LINEAR_SPEED = %f",FORWARD_LINEAR_SPEED);
+                // set the scale of the repulsary contribute for long distance travel
+                REPULSION_SCALE = 0.1;
+                // set scale of attractive contribute to zero since Tiago is already in the right direction 
+                ATTRACTION_SCALE = 0.0; 
+                ESCAPE_DISTANCE_THRESHOLD = 100;
+                // send feedback
+                feedback("[BEHAVIOR ONE] follow corridor");
             }
 
-            // BEHAVIOR TWO: if Tiago has something closer then 5 meters ahead, find general escape direction
+            // BEHAVIOR TWO: avoid traps
+            // if Tiago has something closer then 5 meters ahead but further than 3, follow escape direction 
             else if(straight_free_distance > 3){
                 // assign new x speed proportional to straight distance 
                 // using a smaller scale
                 FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE + straight_free_distance/5;
-                OBSTACLE_DISTANCE_THRESHOLD = 0.45; // set short distance attention thresholding
-                REPULSION_SCALE = 0.15; // set the scale of the repulsary contribute for short distance attention
-                ATTRACTION_SCALE = 0.3; // set the scale of the attractive contribute for finding the right direction
+                // set a short distance thresholding to not hit really close obstacles 
+                OBSTACLE_DISTANCE_THRESHOLD = 0.35; 
+                // set the scale of the repulsary contribute to avoid even the little obstacles
+                REPULSION_SCALE = 0.3; 
+                // set the scale of the attractive contribute to dominate with escape direction
+                ATTRACTION_SCALE = 0.5; 
+                // set the distance above which the direction is considered an escape direction
+                ESCAPE_DISTANCE_THRESHOLD = 5;
+                // send feedback
+                feedback("[BEHAVIOR TWO] avoid traps");
             }
 
-            // BEHAVIOR THREE: if Tiago has something closer then 3 meters ahead, avoid obstacle
+            // BEHAVIOR THREE: avoid osbtacle
+            // if Tiago has something closer then 3 meters ahead, avoid the obstacle
             else{
                 // assign new x speed proportional to straight distance 
                 // using a smaller scale
                 FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE/2 + straight_free_distance/5;
-                OBSTACLE_DISTANCE_THRESHOLD = 0.6; // set short distance attention thresholding
-                REPULSION_SCALE = 0.3; // set the scale of the repulsary contribute for short distance attention
-                ATTRACTION_SCALE = 0.5; // set the scale of the attractive contribute to a higher value to prefer the escape direction
+                // set a higher distance to include more obstacles
+                OBSTACLE_DISTANCE_THRESHOLD = 0.6; 
+                // set the scale of the repulsary contribute to a higher value to avoid obstacles
+                REPULSION_SCALE = 0.3; 
+                // set the escape direction as guide
+                ATTRACTION_SCALE = 0.5; 
+                // set the distance above which the direction is considered an escape direction
+                ESCAPE_DISTANCE_THRESHOLD = 3;
+                // send feedback
+                feedback("[BEHAVIOR THREE] avoid obstacle");
             }
                 
         }
@@ -244,26 +266,23 @@ class TiagoAction{
         // __________________________________________________
         // wandering + obstacle avoidance 
         geometry_msgs::Twist generateVelCmd(){
-            // input: laserScan (10Hz) || output: velocity commands (10Hz) 
-
             // define object to contain velocity commands
             geometry_msgs::Twist next_cmd_vel;
 
+            // long distances generate an attractive force proportional to their distance
             // Obstacles generate a repulsive force proportional to their proximity
-            // A global wandering vector (e.g., forward motion) acts as an attractive force
             // Combine the forces into a resultant motion vector.
-
 
             // Initialize total repulsive angular velocity
             double repulsive_angular_velocity = 0.0;
 
-            // Compute the best rotation for Tiago
+            // Compute the best next direction for tiago
             for (size_t i = 0; i < scan_ranges.size(); ++i) {
                 double distance = scan_ranges[i];
-                // general escape direction contribute
-                if(distance > 5){
+                // escape direction contribute
+                if(distance > ESCAPE_DISTANCE_THRESHOLD){
                     double angle = scan_angle_min + i * scan_angle_increment;
-                    double attraction = ATTRACTION_SCALE * distance/5;  // the more distant the stronger 
+                    double attraction = ATTRACTION_SCALE * distance/ESCAPE_DISTANCE_THRESHOLD;  // the more distant the stronger 
                     repulsive_angular_velocity += attraction * sin(angle); 
 
                 }
@@ -365,6 +384,7 @@ class TiagoAction{
             // Initialize parameters
             tiago_shape = 0.2; // below it's tiago's body
             OBSTACLE_DISTANCE_THRESHOLD = 0.35; // below it's an obstacle
+            ESCAPE_DISTANCE_THRESHOLD = 0.5; // above it's an escape direction
             FORWARD_LINEAR_SPEED = 0.0; // initial straight speed
             REPULSION_SCALE = 0.1; // how much the obstacle count to go in opposite direction
             ATTRACTION_SCALE = 0.1; // how much the general direction weights as a contribute
