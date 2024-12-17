@@ -41,6 +41,7 @@ class TiagoAction{
         double OBSTACLE_DISTANCE_THRESHOLD; // Threshold to avoid obstacles (meters)
         double FORWARD_LINEAR_SPEED;       // Forward linear speed (m/s)
         double REPULSION_SCALE;    // Scale factor for repulsion
+        double ATTRACTION_SCALE;    // Scale factor for attraction
         double LONG_DISTANCE_SCALE;
         double SHORT_DISTANCE_SCALE;
         bool found_all_aprilTags; // its true when all AprilTags are found!
@@ -74,10 +75,8 @@ class TiagoAction{
             initializeCamera();
 
             // ACTIVATE EXPLORATION MODE!
-            feedback("[EXPLORATION MODE] activated");
             explorationMode();
-            // exploration mode deactivated: goal achieved!
-            feedback("[EXPLORATION MODE] deactivated: Tiago found all AprilTags !");
+        
             // wait for current loop to finish (1Hz)
             r.sleep();
             // sets the goal as succeded to Node_A, which terminates!
@@ -194,9 +193,9 @@ class TiagoAction{
         }
 
         // method to update Tiago velocity based on long distances detected
-        void accelerator(){
-            // like manual drive depending on straight distance ahead
+        void behavioralControl(){
 
+            // PROCESSING DATA FOR EACH BEHAVIOR
             // pick the minimum distance in a range of values near the forward direction 
             double straight_free_distance = 1000;
             for(size_t i = (scan_ranges.size()/2)-4; i < (scan_ranges.size()/2) + 4; i++)
@@ -205,23 +204,38 @@ class TiagoAction{
                     straight_free_distance=scan_ranges[i];
 
             }
-            // if 5 meters free in front of thiago
+
+            // BEHAVIOR ONE: if Tiago has 5 meters ahead move straight fast: "corridor behavior"
             if(straight_free_distance > 5){
                 // assign new x speed proportional to straight distance
                 // using a gretaer scale
                 FORWARD_LINEAR_SPEED = LONG_DISTANCE_SCALE * straight_free_distance;
-                OBSTACLE_DISTANCE_THRESHOLD = 0.35; // set long distance travel thresholding
-                REPULSION_SCALE = 0.3; // set the scale of the repulsary contribute for long distance travel
+                // set long distance travel thresholding
+                OBSTACLE_DISTANCE_THRESHOLD = 0.35; 
+
+                REPULSION_SCALE = 0.1; // set the scale of the repulsary contribute for long distance travel
+                ATTRACTION_SCALE = 0.01; // set a lower scale of attractive contribute since Tiago is already in the right direction
                 //ROS_INFO("FORWARD_LINEAR_SPEED = %f",FORWARD_LINEAR_SPEED);
             }
-            // if not 5 meters free in front of tiago 
-            // set obstacle avoidance speed = 0.1 m/s
-            else{
+
+            // BEHAVIOR TWO: if Tiago has something closer then 5 meters ahead, find general escape direction
+            else if(straight_free_distance > 3){
                 // assign new x speed proportional to straight distance 
                 // using a smaller scale
                 FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE + straight_free_distance/5;
-                OBSTACLE_DISTANCE_THRESHOLD = 0.6; // set short distance attention thresholding
+                OBSTACLE_DISTANCE_THRESHOLD = 0.45; // set short distance attention thresholding
                 REPULSION_SCALE = 0.15; // set the scale of the repulsary contribute for short distance attention
+                ATTRACTION_SCALE = 0.3; // set the scale of the attractive contribute for finding the right direction
+            }
+
+            // BEHAVIOR THREE: if Tiago has something closer then 3 meters ahead, avoid obstacle
+            else{
+                // assign new x speed proportional to straight distance 
+                // using a smaller scale
+                FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE/2 + straight_free_distance/5;
+                OBSTACLE_DISTANCE_THRESHOLD = 0.6; // set short distance attention thresholding
+                REPULSION_SCALE = 0.3; // set the scale of the repulsary contribute for short distance attention
+                ATTRACTION_SCALE = 0.5; // set the scale of the attractive contribute to a higher value to prefer the escape direction
             }
                 
         }
@@ -229,7 +243,7 @@ class TiagoAction{
         // EXPLORE BEHAVIOR method
         // __________________________________________________
         // wandering + obstacle avoidance 
-        geometry_msgs::Twist exploreBehavior(){
+        geometry_msgs::Twist generateVelCmd(){
             // input: laserScan (10Hz) || output: velocity commands (10Hz) 
 
             // define object to contain velocity commands
@@ -243,9 +257,16 @@ class TiagoAction{
             // Initialize total repulsive angular velocity
             double repulsive_angular_velocity = 0.0;
 
-            // Compute repulsion from obstacles
+            // Compute the best rotation for Tiago
             for (size_t i = 0; i < scan_ranges.size(); ++i) {
                 double distance = scan_ranges[i];
+                // general escape direction contribute
+                if(distance > 5){
+                    double angle = scan_angle_min + i * scan_angle_increment;
+                    double attraction = ATTRACTION_SCALE * distance/5;  // the more distant the stronger 
+                    repulsive_angular_velocity += attraction * sin(angle); 
+
+                }
                 // obstacle detected at distance
                 if (distance < OBSTACLE_DISTANCE_THRESHOLD && distance > tiago_shape) {
                     //feedback(std::to_string(distance));
@@ -256,6 +277,7 @@ class TiagoAction{
 
                 }
             }
+            
             // Obstacle detected: turn away using repulsive forces
             next_cmd_vel.angular.z = repulsive_angular_velocity;
             //feedback("Repelling from obstacles.");
@@ -270,7 +292,7 @@ class TiagoAction{
         
         // 
         
-        // BEHAVIORAL CONTROL method
+        // EXPLORE BEHAVIOR method
         // _______________________________
         // this method implements a Tiago
         // velocity controller that 
@@ -278,36 +300,24 @@ class TiagoAction{
         // behaviours that will keep 
         // Tiago exploring the environment
         // before finding all AprilTags
-        void behavioralControl(){
+        void exploreBehavior(){
             // input: laserScan (10Hz) || output: velocity commands (10Hz) 
             // (not synchronous)
 
             // INITIALIZATION
 
-            // initialize the next velocity commands objects
+            // initialize the next velocity commands object
             geometry_msgs::Twist next_cmd_vel;
-            geometry_msgs::Twist explore_behavior;
-            // ecc  
 
-            // Call the EXPLORING BEHAVIOUR 
-            // 
-            accelerator();
-            explore_behavior = exploreBehavior();
+            // adapt the exploring behavior to the current situation
+            behavioralControl();
 
-            // BEHAVIOURAL CONTROLLER
-            next_cmd_vel = explore_behavior;
+            // set next velocity commands 
+            next_cmd_vel = generateVelCmd();
 
             // [MOVE TIAGO]
             // publish the next velocity commands
             vel_cmd_pub.publish(next_cmd_vel);
-            /*
-            // publish feedback about velocity commands
-            feedback("[NEXT VELOCITY CMD] \n[Linear]  | Vx = " + 
-                std::to_string(next_cmd_vel.linear.x) + "| \n" +
-                "[Angular] | Wz = " +
-                std::to_string(next_cmd_vel.angular.z) + "|");
-            */
-            //count++; // to delete
         }
 
 
@@ -321,7 +331,8 @@ class TiagoAction{
             ros::Rate rate(10);
         
             // using behavioural control 
-            feedback("[BEHAVIORAL CONTROL] activated");
+            feedback("[EXPLORATION MODE] initialized");
+            feedback("[EXPLORE BEHAVIOR] activated");
 
             // EXPLORATION MODE journey
             // ends when all AprilTags are found  
@@ -331,14 +342,17 @@ class TiagoAction{
                 if(count==300){
                     found_all_aprilTags = true;
                 }*/
-                // activate BEHAVIORAL CONTROL
-                // this control manages different simple
+                // activate WXPLORING BEHAVIOR
+                // this behavior manages manu different simple
                 // behaviours of Tiago to explore the 
                 // environment and detect all the AprilTags
-                behavioralControl();
+                exploreBehavior();
                 // Sleep to enforce the rate
                 rate.sleep();
             }
+            
+            // exploration mode deactivated: goal achieved!
+            feedback("[EXPLORATION MODE] deactivated: Tiago found all AprilTags!");
             return;
         }
 
@@ -353,6 +367,7 @@ class TiagoAction{
             OBSTACLE_DISTANCE_THRESHOLD = 0.35; // below it's an obstacle
             FORWARD_LINEAR_SPEED = 0.0; // initial straight speed
             REPULSION_SCALE = 0.1; // how much the obstacle count to go in opposite direction
+            ATTRACTION_SCALE = 0.1; // how much the general direction weights as a contribute
             LONG_DISTANCE_SCALE = 0.5; // acceleration scale for long distance travel
             SHORT_DISTANCE_SCALE = 0.1; // acceleration scale for short distance attention
             found_all_aprilTags = false; // no AprilTags found yet, start looking for them
