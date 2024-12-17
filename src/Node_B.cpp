@@ -202,7 +202,7 @@ class TiagoAction{
             // PROCESSING DATA FOR EACH BEHAVIOR
             // pick the minimum distance in a range of values near the forward direction 
             double straight_free_distance = 1000;
-            for(size_t i = (scan_ranges.size()/2)-32; i < (scan_ranges.size()/2) + 32; i++)
+            for(size_t i = (scan_ranges.size()/2)-8; i < (scan_ranges.size()/2) + 8; i++)
             {
                 if(scan_ranges[i] < straight_free_distance)
                     straight_free_distance=scan_ranges[i];
@@ -239,12 +239,30 @@ class TiagoAction{
                 // set the scale of the attractive contribute to dominate with escape direction
                 ESCAPE_SCALE = 1; 
                 // set the distance above which the direction is considered an escape direction
-                ESCAPE_DISTANCE_THRESHOLD = 3;
+                ESCAPE_DISTANCE_THRESHOLD = 3.5;
                 // send feedback
-                feedback("[BEHAVIOR TWO] avoid traps");
+                feedback("[BEHAVIOR TWO] obstacle above three meters ahead");
             }
 
-            // BEHAVIOR THREE: avoid osbtacle
+	    // BEHAVIOR THREE: avoid traps
+            // if Tiago has something closer then 5 meters ahead but further than 3, follow escape direction 
+            else if(straight_free_distance > 1.5){
+                // assign new x speed proportional to straight distance 
+                // using a smaller scale
+                FORWARD_LINEAR_SPEED = SHORT_DISTANCE_SCALE/2 + straight_free_distance/10;
+                // set a short distance thresholding to not hit really close obstacles 
+                //OBSTACLE_DISTANCE_THRESHOLD = 0.35; 
+                // set the scale of the repulsary contribute to avoid even the little obstacles
+                //REPULSION_SCALE = 0.3; 
+                // set the scale of the attractive contribute to dominate with escape direction
+                ESCAPE_SCALE = 1.5; 
+                // set the distance above which the direction is considered an escape direction
+                ESCAPE_DISTANCE_THRESHOLD = 2;
+                // send feedback
+                feedback("[BEHAVIOR THREE] obstacle above 1.5 meters ahead");
+            }
+
+            // BEHAVIOR FOUR: avoid osbtacle
             // if Tiago has something closer then 3 meters ahead, avoid the obstacle
             else{
                 // assign new x speed proportional to straight distance 
@@ -260,7 +278,7 @@ class TiagoAction{
                 // set the distance above which the direction is considered an escape direction
                 ESCAPE_DISTANCE_THRESHOLD = 1.5;
                 // send feedback
-                feedback("[BEHAVIOR THREE] avoid obstacle");
+                feedback("[BEHAVIOR FOUR] obstacle below 1.5 meters ahead");
             }
                 
         }
