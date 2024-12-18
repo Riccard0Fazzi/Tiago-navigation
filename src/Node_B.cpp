@@ -12,8 +12,11 @@
 #include <image_transport/image_transport.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
+#include <cmath>
 #include <tf/LinearMath/Vector3.h> //Import Vector3 to define threedimensional vectors for linear and angular velocities
+#include <tf/tf.h> // For quaternion calculations
 
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient; // alias for the move_base action client
 typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
 
 
@@ -38,15 +41,17 @@ class TiagoAction{
         ros::Subscriber laser_scan_sub; // subscriber for laser scanner topic
         ros::Subscriber tag_sub; // subscriber for apriltag detection
         image_transport::Subscriber image_sub; // subscriber for camera 
-        double OBSTACLE_DISTANCE_THRESHOLD; // Threshold to avoid obstacles (meters)
+        double AVOID_DISTANCE_THRESHOLD; // Threshold to avoid obstacles (meters)
         double ESCAPE_DISTANCE_THRESHOLD; // Threshold for escape directions (meters)
-        double FORWARD_LINEAR_SPEED;       // Forward linear speed (m/s)
-        double REPULSION_SCALE;    // Scale factor for repulsion
-        double ATTRACTION_SCALE;    // Scale factor for attraction
-        double ESCAPE_SCALE; // Scale factor for following escape distance
-        double LONG_DISTANCE_SCALE; // scale factor for acceleration
-        double SHORT_DISTANCE_SCALE;
-        double CLUSTER_GAP_THRESHOLD; // used to discretize different escaping directions
+        double AVOID_CLUSTER_THRESHOLD; // Threshold to avoid obstacles (meters)
+        double ESCAPE_CLUSTER_THRESHOLD; // Threshold for escape directions (meters)
+        double avoid_direction_angle; // angle of avoidance of an obstacle
+        double obstacle_distance; // distance of the closest obstacle
+        double escape_direction_angle; // angle of escape direction
+        double escape_distance; // distance of the escape direction
+        double escape_factor;
+        bool explore; // true when obstacle ahead
+        bool no_escape;
         bool found_all_aprilTags; // its true when all AprilTags are found!
 
         //------------------------ CALLBACK FUNCTIONS -----------------------------
@@ -71,8 +76,6 @@ class TiagoAction{
                 goal_.push_back(goal->apriltag_ids[i]);
                 ROS_INFO("ID: %ld", goal->apriltag_ids[i]);
             }
-            // set status as ready
-            feedback("Tiago ready to navigate");
 
             // INITIALIZE CAMERA 
             initializeCamera();
@@ -173,7 +176,7 @@ class TiagoAction{
         void initializeCamera(){
             // define rate for the initialization operation
             ros::Rate cam_init_r(1);
-            feedback("Initialize camera ...");
+            ROS_INFO("Initialize camera ...");
             // waiting for subscribers to /head_controller/command
             while(tilt_cam_pub.getNumSubscribers() == 0 && ros::ok()){
                 cam_init_r.sleep();
@@ -192,14 +195,37 @@ class TiagoAction{
             // wait for Tiago to incline the camera ..
             cam_init_r.sleep();
             // publish feedback
-            feedback("[Camera-Initialized]");
+            ROS_INFO("[Camera-Initialized]");
         }
 
+        /*
         // method to update Tiago's explore behavior parameters
         // to achieve a control of smaller behaviors
         void behavioralControl(){
+            // PROCESSING DATA -> behavior adaptation
 
-            // PROCESSING DATA FOR EACH BEHAVIOR
+            // Tiago Perception adaptation
+
+            // compute the obstacles presence current contribute around tiago
+
+            // Initialize total repulsive angular velocity
+            double repulsive_angular_force = 0.0;
+            int repulsive_angular_normalization = 0;
+            // Compute the obstacles contribution
+            for (size_t i = 0; i < scan_ranges.size(); ++i) {
+                double distance = scan_ranges[i];
+                // obstacle detected at distance
+                if (distance < OBSTACLE_DISTANCE_THRESHOLD && distance > tiago_shape) {
+                    //feedback(std::to_string(distance));
+                    // Calculate repulsion angle based on scan index
+                    double angle = scan_angle_min + i * scan_angle_increment;
+                    repulsive_angular_force += - angle;  // Summing angular effects
+                    repulsive_angular_normalization++;
+                }
+            }
+            repulsive_angular_force = repulsive_angular_force/repulsive_angular_normalization;
+            ROS_INFO("[repulsive_angular_force] = %f",repulsive_angular_force );
+
             // pick the minimum distance in a range of values near the forward direction 
             double straight_free_distance = 1000;
             for(size_t i = (scan_ranges.size()/2)-8; i < (scan_ranges.size()/2) + 8; i++)
@@ -282,20 +308,21 @@ class TiagoAction{
             }
                 
         }
+        */
 
-        // ESCAPE DIRECTION method
-        // ________________________________________________
-        // find the escape direction to guide Tiago towards
-        // the exploration
-        double escapeDirection(){
+        // ESCAPE BEHAVIOR method
+        // _________________________________________
+        // returns the angle of the escape direction
+        void escapingPerception(){
+            // cluster scan to detect the escape directions
             // long distances generate an attractive force proportional to their distance
             // Input: scan_ranges (distances), scan_angle_min, scan_angle_increment
-            std::vector<std::vector<double>> clusters_of_angles;
+            std::vector<std::vector<std::pair<double,double>>> clusters;
+            no_escape = false;
 
             // Variables to keep track of clusters
-            std::vector<double> current_cluster_angles;
+            std::vector<std::pair<double,double>> current_cluster;
             size_t previous_index = 0;
-            bool in_cluster = false;
 
             // Loop through scan_ranges to identify clusters
             for (size_t i = 0; i < scan_ranges.size(); ++i) {
@@ -305,45 +332,36 @@ class TiagoAction{
                 // Check if the distance meets the threshold
                 if (distance > ESCAPE_DISTANCE_THRESHOLD) {
                     // Check for a gap in indices to split clusters
-                    if (!in_cluster || (i - previous_index) > CLUSTER_GAP_THRESHOLD) {
+                    if ((i - previous_index) > ESCAPE_CLUSTER_THRESHOLD) {
                         // If a cluster exists, save it and start a new one
-                        if (!current_cluster_angles.empty()) {
-                            clusters_of_angles.push_back(current_cluster_angles);
-                            current_cluster_angles.clear();
+                        if (!current_cluster.empty()) {
+                            clusters.push_back(current_cluster);
+                            current_cluster.clear();
                         }
-                        in_cluster = true;
+                        else{
+                            current_cluster.clear();
+                        }
                     }
 
                     // Add current angle to the cluster
-                    current_cluster_angles.push_back(angle);
+                    current_cluster.push_back(std::make_pair(angle,distance)); // .first -> angle
                     previous_index = i;  // Update the previous index
                 } 
-                else {
-                    // If not in a cluster, reset state
-                    if (in_cluster) {
-                        clusters_of_angles.push_back(current_cluster_angles);
-                        current_cluster_angles.clear();
-                    }
-                    in_cluster = false;
-                }
             }
 
             // Add the last cluster if it exists
-            if (!current_cluster_angles.empty()) {
-                clusters_of_angles.push_back(current_cluster_angles);
+            if (!current_cluster.empty()) {
+                clusters.push_back(current_cluster);
+                current_cluster.clear();
             }
-            /*
-            // Output the clusters and number of clusters found
-            ROS_INFO("Number of clusters found: %lu", clusters_of_angles.size());
-            for (size_t j = 0; j < clusters_of_angles.size(); ++j) {
-                ROS_INFO("Cluster %lu has %lu angles", j, clusters_of_angles[j].size());
-            }*/
-            // choose best cluster
-            // Handle case with no clusters
-            if (clusters_of_angles.empty()) {
+            if (clusters.empty()) {
                 feedback("[WARNING] No escape direction found!");
-                return 0.0;
+                escape_direction_angle = 0.0;
+                escape_distance = 0.0;
+                no_escape = true;
+                return;
             }
+        
 
             // Seed the random number generator (once per program execution)
             static bool is_rand_seeded = false;
@@ -353,98 +371,107 @@ class TiagoAction{
             }
 
             // Randomly select one cluster
-            size_t random_cluster_index = rand() % clusters_of_angles.size();
-            const std::vector<double>& selected_cluster = clusters_of_angles[random_cluster_index];
+            size_t random_cluster_index = rand() % clusters.size();
+            std::vector<std::pair<double,double>>& selected_cluster = clusters[random_cluster_index];
 
             // Incrementally sum the angular contributes
-            double escape_direction_angle = 0.0;
-            int escape_direction_normalization = 0;
-            for (const double& angle : selected_cluster) {
-                escape_direction_angle += angle;
-                escape_direction_normalization++;
+            double escape_angle = 0.0;
+            escape_distance = 0.0;
+            for (std::pair<double,double> x : selected_cluster) {
+                escape_angle += x.first;
+                escape_distance += x.second;
             }
-            escape_direction_angle = escape_direction_angle/escape_direction_normalization;
-            // Return the final value of the contribution
-            return ESCAPE_SCALE*sin(escape_direction_angle);
+            escape_direction_angle = escape_angle/selected_cluster.size();
+            escape_factor = selected_cluster.size();
+            escape_distance = escape_distance/selected_cluster.size();
+
+            return;
         }
 
-
-        // EXECUTE BEHAVIOR method
-        // __________________________________________________
-        // publish the next velocity commands resulting to the
-        // adapted explore behavior ( behavioralControl() )
-        void executeBehavior(){
-            // define object to contain velocity commands
-            geometry_msgs::Twist next_cmd_vel;
-
+        // AVOID OBSTACLE BEHAVIOR method
+        // _________________________________________
+        // returns the angle of the escape direction
+        void avoidancePerception(){
+            // cluster scan to detect the escape directions
             // long distances generate an attractive force proportional to their distance
-            // Obstacles generate a repulsive force proportional to their proximity
-            // Combine the forces into a resultant motion vector.
+            // Input: scan_ranges (distances), scan_angle_min, scan_angle_increment
+            std::vector<std::vector<std::pair<double,double>>> clusters;
 
-            /*
-            // Initialize total repulsive angular velocity
-            double repulsive_angular_velocity = 0.0;
-            double escape_direction_angle = 0.0;
-            int escape_direction_normalization = 0;
-            int i_prec = 0;
-            bool escape_direction_computed = false;
-            std::vector<std::vector<double>> clusters_of_angles;
-
-            // Compute the best next direction for tiago
-            for (size_t i = 0; i < scan_ranges.size(); ++i) {
+            // Variables to keep track of clusters
+            std::vector<std::pair<double,double>> current_cluster;
+            size_t previous_index = 0;
+    
+            // Loop through (90 LEFT, 90 RIGHT) scan_ranges to identify clusters
+            for (size_t i = (scan_ranges.size()/2)-(90/scan_angle_increment); i < (scan_ranges.size()/2)+(90/scan_angle_increment) ; i++) {
                 double distance = scan_ranges[i];
+                double angle = scan_angle_min + i * scan_angle_increment;
 
-                // escape direction vector computation
-                if(distance > ESCAPE_DISTANCE_THRESHOLD && !escape_direction_computed){
-                    // compute the angle of the escape direction contribute
-                    double angle = scan_angle_min + i * scan_angle_increment;
-                    ROS_INFO("[distance] = %f",distance);
-                    ROS_INFO("[angle] = %f",angle);
-                    //double attraction = ATTRACTION_SCALE;  // the more distant the stronger 
-                    // sum the contribute
-                    escape_direction_angle += angle; 
-                    // update normalization factor
-                    escape_direction_normalization++;
-                    // take just one escape direction not multiples
-                    if(i_prec!=0 && (i-i_prec)>50){
-                        escape_direction_computed = true;
+                // Check if the distance meets the threshold
+                if (distance < AVOID_DISTANCE_THRESHOLD && distance > tiago_shape) {
+                    // Check for a gap in indices to split clusters
+                    if ((i - previous_index) > AVOID_CLUSTER_THRESHOLD) {
+                        // If a cluster exists and it's not too small, save it and start a new one
+                        if (current_cluster.size() > 4) {
+                            clusters.push_back(current_cluster);
+                            current_cluster.clear();
+                        }
+                        else{
+                            current_cluster.clear();
+                        }
                     }
 
-                    i_prec = i;
-                }
-                if(escape_direction_normalization !=0){
-                    escape_direction_angle = escape_direction_angle/escape_direction_normalization;
-                    repulsive_angular_velocity = ESCAPE_SCALE*sin(escape_direction_angle);
-                }
-                
-                // obstacle detected at distance
-                if (distance < OBSTACLE_DISTANCE_THRESHOLD && distance > tiago_shape) {
-                    //feedback(std::to_string(distance));
-                    // Calculate repulsion angle based on scan index
-                    double angle = scan_angle_min + i * scan_angle_increment;
-                    double repulsion = REPULSION_SCALE / distance;  // Stronger repulsion when closer
-                    repulsive_angular_velocity += -repulsion * sin(angle);  // Summing angular effects
+                    // Add current angle to the cluster
+                    current_cluster.push_back(std::make_pair(angle,distance)); // .first -> angle
+                    previous_index = i;  // Update the previous index
+                } 
+            }
 
+            // Add the last cluster if it exists
+            if (!current_cluster.empty()) {
+                clusters.push_back(current_cluster);
+            }
+            
+            // Output the clusters and number of clusters found
+            ROS_INFO("Number of obstacles found: %lu", clusters.size());
+            for (size_t j = 0; j < clusters.size(); ++j) {
+                ROS_INFO("Obstacle %lu has %lu contributions", j, clusters[j].size());
+            }
+
+            if (clusters.empty()) {
+                feedback("[WARNING] No obstacle ahead!");
+                explore = true;
+                return;
+            }
+
+            // compute the closest obstacle
+            double min_distance = 1000.0;
+            double closest_obstacle_distance = 0.0;
+            double avoid_angle = 0.0;
+            for (std::vector<std::pair<double,double>> obstacle : clusters) { // for each obstacle
+                // take the minimum distance point of the obstacle 
+                double obstacle_minimum_distance = 1000.0;
+                for(std::pair<double,double> x : obstacle){
+                    if(x.second<obstacle_minimum_distance){
+                        closest_obstacle_distance = x.second; 
+                        avoid_angle = x.first;
+                    }
                 }
-            }*/
-            double angular_velocity = 0.0;
-            angular_velocity = escapeDirection();
-            // Obstacle detected: turn away using repulsive forces
-            next_cmd_vel.angular.z = angular_velocity;
-            //ROS_INFO("[Wz] = %f", angular_velocity);
-            //double random_wiggle = ((rand() % 200) - 100) / 1000.0; // Random value between -0.1 and 0.1
-            //next_cmd_vel.angular.z = random_wiggle;
+                // choose the closest obstacle among all obstacles
+                if(closest_obstacle_distance < min_distance){
+                    min_distance = closest_obstacle_distance;
+                    obstacle_distance = closest_obstacle_distance;
+                    avoid_direction_angle = avoid_angle;
+                }
+            }
+            ROS_INFO("%f < %f or %f > %f", avoid_direction_angle,-M_PI/8, avoid_direction_angle, M_PI/8);
+            // setting obstacle variable
+            if(avoid_direction_angle<-M_PI/8 || avoid_direction_angle > M_PI/8){
+                explore = true;
+            }
 
-            // always moving forward 
-            next_cmd_vel.linear.x = FORWARD_LINEAR_SPEED;
-
-            // [MOVE TIAGO]
-            // publish the next velocity commands
-            vel_cmd_pub.publish(next_cmd_vel);
+            //ROS_INFO("Closest obstacle at distance %f at %f direction angle", obstacle_distance, avoid_direction_angle);
+            return;
         }
-        
-        // 
-        
         // EXPLORE BEHAVIOR method
         // _______________________________
         // this method implements a Tiago
@@ -457,20 +484,67 @@ class TiagoAction{
             // input: laserScan (10Hz) || output: velocity commands (10Hz) 
             // (not synchronous)
 
-            // INITIALIZATION
-
-            // initialize the next velocity commands object
+            // define velocity command object
             geometry_msgs::Twist next_cmd_vel;
 
-            // adapt the exploring behavior to the current situation
-            behavioralControl();
 
-            // set next velocity commands and move Tiago
-            executeBehavior();
+            // [BEHAVIORAL CONTROL]
 
-            
+            // set tiago escape
+            if(explore){
+                // update perception
+                escapingPerception();
+                if(no_escape){
+                    // rotate to get a better view
+                    next_cmd_vel.angular.z = 0.3;
+                    next_cmd_vel.linear.x = 0.0;
+                    feedback("Searching for escape ...");
+                    // [MOVE TIAGO]
+                    // publish the next velocity commands
+                    vel_cmd_pub.publish(next_cmd_vel);
+                    return;
+                }
+                // set velocities
+                next_cmd_vel.angular.z = sin(escape_direction_angle);
+                next_cmd_vel.linear.x = 1;
+                feedback("Exploring ...");
+                // [MOVE TIAGO]
+                // publish the next velocity commands
+                vel_cmd_pub.publish(next_cmd_vel);
+                return;
+            }          
+            // obstacle avoidance 
+            else{
+                // update perception
+                avoidancePerception(); // avoid_direction_angle || obstacle_distance
+                // choose left or right turning
+                if(explore) return; // not rotate again if no obstacles found
+                else{
+                    double value = (std::rand() % 2 == 0) ? -1.0 : 1.0;
+                    next_cmd_vel.angular.z = value*0.5;
+                    next_cmd_vel.linear.x = 0.0;
+                    feedback("Obstacle avoidance ...");
+                    // [MOVE TIAGO]
+                    // publish the next velocity commands
+                    vel_cmd_pub.publish(next_cmd_vel);
+                    return;
+                }
+            }
+            /*
+            // assign the next velocity commands
+            next_cmd_vel.angular.z = (obstacle_distance*sin(escape_direction_angle))-
+                                             (sin(avoid_direction_angle)/obstacle_distance);
+            next_cmd_vel.linear.x = escape_distance * obstacle_distance * cos(escape_direction_angle);*/
+
+            //ROS_INFO("[Wz] = %f", angular_velocity);
+            //double random_wiggle = ((rand() % 200) - 100) / 1000.0; // Random value between -0.1 and 0.1
+            //next_cmd_vel.angular.z = random_wiggle;
+
+            //ROS_INFO("[Wz] = %f",next_cmd_vel.angular.z);
+            //ROS_INFO("[Vx] = %f",next_cmd_vel.angular.x);
+            feedback("should never arrive here!"); // debug
+            return; 
         }
-
 
         // EXPLORATION MODE method
         //__________________________________________________
@@ -478,32 +552,67 @@ class TiagoAction{
         // towards achieving the goal: finding all AprilTags
         // contained in goal_.
         void explorationMode(){
-            // Set the rate for the velocity commands to Tiago 
-            ros::Rate rate(10);
+            // Set the rate 
+            ros::Rate rate(1);
+            
+            MoveBaseClient ac_("move_base", true); // start the action client to send the next goal to move_base
+            // wait for the action server to come up
+            while(!ac_.waitForServer(ros::Duration(5.0))){
+                ROS_INFO("Waiting for the move_base action server to come up");
+            }
         
             // using behavioural control 
-            feedback("[EXPLORATION MODE] initialized");
-            feedback("[EXPLORE BEHAVIOR] activated");
+            ROS_INFO("[EXPLORATION MODE] initialized");
 
             // EXPLORATION MODE journey
             // ends when all AprilTags are found  
-            while(!found_all_aprilTags && ros::ok()){
-                /*
-                // to delete (300, duration of test)
-                if(count==300){
-                    found_all_aprilTags = true;
-                }*/
-                // activate WXPLORING BEHAVIOR
-                // this behavior manages manu different simple
-                // behaviours of Tiago to explore the 
-                // environment and detect all the AprilTags
-                exploreBehavior();
-                // Sleep to enforce the rate
+            while(!found_all_aprilTags && ros::ok()){ // use feedback to publish tiago status
+                
+                // 360 ROTATION with move_base
+                // "checking around for AprilTags"  
+                // first half
+                move_base_msgs::MoveBaseGoal goal;
+                goal.target_pose.header.frame_id = "base_link";
+                goal.target_pose.header.stamp = ros::Time::now();
+                // Position remains unchanged for rotation
+                goal.target_pose.pose.position.x = 0.0;
+                goal.target_pose.pose.position.y = 0.0;
+                // Orientation: 180-degree rotation (π radians)
+                goal.target_pose.pose.orientation = tf::createQuaternionMsgFromYaw(M_PI);
+                ROS_INFO("Sending goal");
+                ac_.sendGoal(goal);
+                ac_.waitForResult();
+                if(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+                ROS_INFO("Hooray, the base moved 1 meter forward");
+                else
+                ROS_INFO("The base failed to move forward 1 meter for some reason");
+
+                // IF (corridor_mode) -> motion control law -> publish velocity commands
+
+                // escapePerception and turn around randomically (move_base) if not valid
+
+                // move_base to go to that position
+                        /*
+                                move_base_msgs::MoveBaseGoal goal;
+                                goal.target_pose.header.frame_id = "base_link";
+                                goal.target_pose.header.stamp = ros::Time::now();
+                                goal.target_pose.pose.position.x = 1.0;
+                                goal.target_pose.pose.orientation.w = 1.0;
+                                ROS_INFO("Sending goal");
+                                ac_.sendGoal(goal);
+                                ac_.waitForResult();
+                                if(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
+                                ROS_INFO("Hooray, the base moved 1 meter forward");
+                                else
+                                ROS_INFO("The base failed to move forward 1 meter for some reason");*/
+
+                // Sleep to enforce the rate 
                 rate.sleep();
             }
             
             // exploration mode deactivated: goal achieved!
-            feedback("[EXPLORATION MODE] deactivated: Tiago found all AprilTags!");
+            ROS_INFO("[EXPLORATION MODE] deactivated: Tiago found all AprilTags!");
+            feedback("Tiago found all AprilTags!");
             return;
         }
 
@@ -515,15 +624,17 @@ class TiagoAction{
 		{
             // Initialize parameters
             tiago_shape = 0.2; // below it's tiago's body
-            OBSTACLE_DISTANCE_THRESHOLD = 0.35; // below it's an obstacle
-            ESCAPE_DISTANCE_THRESHOLD = 1.5; // above it's an escape direction
-            FORWARD_LINEAR_SPEED = 0.0; // Tiago straight speed
-            REPULSION_SCALE = 0.1; // how much the obstacle count to go in opposite direction
-            ATTRACTION_SCALE = 0.1; // how much the general direction weights as a contribute
-            ESCAPE_SCALE = 1; // how much tiago is following escape directioon
-            LONG_DISTANCE_SCALE = 0.3; // acceleration scale for long distance travel
-            SHORT_DISTANCE_SCALE = 0.05; // acceleration scale for short distance attention
-            CLUSTER_GAP_THRESHOLD = 2;
+            AVOID_DISTANCE_THRESHOLD = 1; // below it's a new obstacle found
+            ESCAPE_DISTANCE_THRESHOLD = 4; // above it's an escape direction
+            AVOID_CLUSTER_THRESHOLD = 1; // below it's a new obstacle found
+            ESCAPE_CLUSTER_THRESHOLD = 5; // above it's an escape direction
+            obstacle_distance = 0.0;
+            escape_distance = 0.0;
+            escape_factor = 0.0;
+            avoid_direction_angle = 0.0;
+            escape_direction_angle = 0.0;
+            explore = false;
+            no_escape = false;
             found_all_aprilTags = false; // no AprilTags found yet, start looking for them
 
             // Start the action server
@@ -566,5 +677,3 @@ int main(int argc, char** argv){
 
     return 0;
 }
-
-
