@@ -53,6 +53,7 @@ class TiagoAction{
         bool explore; // true when obstacle ahead
         bool no_escape;
         bool found_all_aprilTags; // its true when all AprilTags are found!
+	bool corridor;
 
         //------------------------ CALLBACK FUNCTIONS -----------------------------
 
@@ -546,6 +547,45 @@ class TiagoAction{
             return; 
         }
 
+        void rotation()
+        {
+		ros::Rate r_rotation(20);
+		int small_rotations = 0;
+	       	while(ros::ok() && small_rotations < 57) // maybe 56 is the right value
+		{
+		    geometry_msgs::Twist next_cmd_vel;
+                    next_cmd_vel.angular.z = M_PI;
+		    vel_cmd_pub.publish(next_cmd_vel);
+		    small_rotations++;
+		    r_rotation.sleep();
+		}
+        }
+
+	void corridor_mode()
+	{
+		ros::Rate r_corridor(10);
+		// scan processing
+		double left_future_side_distance;
+		double right_future_side_distance;
+		while(ros::ok()) 
+		{
+			left_future_side_distance = scan_ranges[(scan_ranges.size()/2)+(M_PI/4)/scan_angle_increment]*sin(M_PI/4);
+			right_future_side_distance = scan_ranges[(scan_ranges.size()/2)+(M_PI/4)/scan_angle_increment]*sin(M_PI/4);
+			geometry_msgs::Twist next_cmd_vel;
+			if(left_future_side_distance > right_future_side_distance)
+			{
+				next_cmd_vel.linear.z = left_future_side_distance - right_future_side_distance; // increase if not curving enough 
+			}
+			else{
+				next_cmd_vel.linear.z = -(right_future_side_distance - left_future_side_distance); // increase if not curving enough 
+			}
+			next_cmd_vel.linear.z = M_PI;
+			vel_cmd_pub.publish(next_cmd_vel);
+		}
+
+		    
+	}
+
         // EXPLORATION MODE method
         //__________________________________________________
         // this method contains the whole Tiago's journey
@@ -560,7 +600,6 @@ class TiagoAction{
             while(!ac_.waitForServer(ros::Duration(5.0))){
                 ROS_INFO("Waiting for the move_base action server to come up");
             }
-        
             // using behavioural control 
             ROS_INFO("[EXPLORATION MODE] initialized");
 
@@ -570,25 +609,12 @@ class TiagoAction{
                 
                 // 360 ROTATION with move_base
                 // "checking around for AprilTags"  
-                // first half
-                move_base_msgs::MoveBaseGoal goal;
-                goal.target_pose.header.frame_id = "base_link";
-                goal.target_pose.header.stamp = ros::Time::now();
-                // Position remains unchanged for rotation
-                goal.target_pose.pose.position.x = 0.0;
-                goal.target_pose.pose.position.y = 0.0;
-                // Orientation: 180-degree rotation (π radians)
-                goal.target_pose.pose.orientation = tf::createQuaternionMsgFromYaw(M_PI);
-                ROS_INFO("Sending goal");
-                ac_.sendGoal(goal);
-                ac_.waitForResult();
-                if(ac_.getState() == actionlib::SimpleClientGoalState::SUCCEEDED)
-                ROS_INFO("Hooray, the base moved 1 meter forward");
-                else
-                ROS_INFO("The base failed to move forward 1 meter for some reason");
-
+              	rotation();
                 // IF (corridor_mode) -> motion control law -> publish velocity commands
-
+		if(corridor)
+		{
+			
+		}
                 // escapePerception and turn around randomically (move_base) if not valid
 
                 // move_base to go to that position
@@ -636,10 +662,9 @@ class TiagoAction{
             explore = false;
             no_escape = false;
             found_all_aprilTags = false; // no AprilTags found yet, start looking for them
+	    corridor = true; // assumption: there's a corridor
 
-            // Start the action server
-            as_.start();
-            ROS_INFO("Action server [tiago_action] started.");
+          
             // Subscriber for LaserScan topic /scan (messages rate: 10 Hz)
             laser_scan_sub = nh_.subscribe("/scan", 10, &TiagoAction::laserScanCallback, this);
             // Subscriber of image_transport type for Tiago Camera-Visual topic (essages rate: 30 Hz)
@@ -655,6 +680,10 @@ class TiagoAction{
             // publisher for the initial tilt of the camera 
             // to be ready to detect aprilTags
             tilt_cam_pub = nh_.advertise<trajectory_msgs::JointTrajectory>("/head_controller/command", 10);
+            // Start the action server
+            as_.start();
+            ROS_INFO("Action server [tiago_action] started.");
+            
         }
 
 		// Destructor
