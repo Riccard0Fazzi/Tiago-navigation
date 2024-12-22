@@ -197,9 +197,14 @@ class TiagoAction{
         void tiagoEyesCallback(const sensor_msgs::ImageConstPtr& msg) {
             try {
                 cv::Mat img = cv_bridge::toCvCopy(msg, "rgb8")->image;
-
+		// let's downscale the image using new  width and height
+		 int down_width = 500;
+		 int down_height = 500;
+		 cv::Mat resized_down;
+		 //resize down
+		 resize(img, resized_down, cv::Size(down_width, down_height), cv::INTER_LINEAR);
                 // Optional: Display the image (for debugging purposes)
-                cv::imshow("Tiago Eyes", img);
+                cv::imshow("Tiago Eyes", resized_down);
                 cv::waitKey(1);
             } catch (cv_bridge::Exception& e) {
                 ROS_ERROR("Could not convert from '%s' to 'rgb8'.", msg->encoding.c_str());
