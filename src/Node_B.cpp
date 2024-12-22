@@ -198,7 +198,7 @@ class TiagoAction{
             try {
                 cv::Mat img = cv_bridge::toCvCopy(msg, "rgb8")->image;
 		// let's downscale the image using new  width and height
-		 int down_width = img.cols/2;
+		 int down_width = img.cols/2; // dynamic
 		 int down_height = img.rows/2;
 		 cv::Mat resized_down;
 		 //resize down
