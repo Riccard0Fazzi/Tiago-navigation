@@ -69,7 +69,7 @@ int main(int argc, char **argv)
 		// Iterate through the vector of AprilTag poses and print each pose
         for (size_t i = 0; i < result_->aprilTags_poses.size(); ++i) {
             const auto& pose = result_->aprilTags_poses[i];
-			const auto& id = result_->header.seq;
+			const auto& id = result_->aprilTags_poses[i].header.seq;
 
             // Extract position and orientation
             const auto& position = pose.pose.position;
