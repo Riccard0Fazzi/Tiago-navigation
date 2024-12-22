@@ -53,7 +53,42 @@ int main(int argc, char **argv)
 	ac.waitForResult();
 	actionlib::SimpleClientGoalState state = ac.getState();
 	ROS_INFO("Action finished: %s", state.toString().c_str());
+
+	// print all aprilTag IDs found and their poses wrt map
+	// Get the result
+    if (state == actionlib::SimpleClientGoalState::SUCCEEDED) {
+        ir2324_group_24::TiagoResultConstPtr result_ = ac.getResult();
+		// Print header for clarity
+		std::cout << std::setw(15) << "AprilTag ID:"
+				<< std::setw(20) << "Position (x, y, z)"
+				<< std::setw(30) << "Orientation (x, y, z, w)" 
+				<< std::endl;
+
+		std::cout << std::string(65, '-') << std::endl; // Divider line
+
+		// Iterate through the vector of AprilTag poses and print each pose
+        for (size_t i = 0; i < result_->aprilTags_poses.size(); ++i) {
+            const auto& pose = result_->aprilTags_poses[i];
+			const auto& id = result_->header.seq;
+
+            // Extract position and orientation
+            const auto& position = pose.pose.position;
+            const auto& orientation = pose.pose.orientation;
+
+            // Print the pose details with alignment
+            std::cout << std::setw(15) << std::to_string(id)  // You can replace i with a specific ID if available
+                      << std::setw(20) 
+                      << "(" + std::to_string(position.x) + ", " 
+                      + std::to_string(position.y) + ", " 
+                      + std::to_string(position.z) + ")"
+                      << std::setw(30) 
+                      << "(" + std::to_string(orientation.x) + ", " 
+                      + std::to_string(orientation.y) + ", " 
+                      + std::to_string(orientation.z) + ", " 
+                      + std::to_string(orientation.w) + ")"
+                      << std::endl;
+        }
+    }
 	
-	return 0;
 }
 

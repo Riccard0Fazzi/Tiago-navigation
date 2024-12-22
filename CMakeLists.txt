@@ -19,7 +19,10 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_ros
   tf2_geometry_msgs
   tf
+  apriltag_ros
+  control_msgs
 )
+find_package(OpenCV REQUIRED)
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -113,12 +116,13 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 ## Add the executable for Node_A
 add_executable(Node_A src/Node_A.cpp)
 add_executable(Node_B src/Node_B.cpp)
 target_link_libraries(Node_A ${catkin_LIBRARIES})
-target_link_libraries(Node_B ${catkin_LIBRARIES})
+target_link_libraries(Node_B ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 ## Add dependencies for the generated message files
 add_dependencies(Node_A ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(Node_B ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
