@@ -168,13 +168,12 @@ class TiagoAction{
 
                 geometry_msgs::PoseStamped april_tag_pose_map;
                 // get the camera frame to base_link transformation
-                for (int i = 0; i < 3; ++i) { // Retry 3 times
+                for (int i = 0; i < 5000; ++i) { // Retry several times
                     try {
                         transformStamped = tfBuffer.lookupTransform("map", "xtion_rgb_frame", ros::Time(0), timeout);
                         tf2::doTransform(april_tag_pose_camera, april_tag_pose_map, transformStamped);
                         break; // Exit loop on success
                     } catch (tf2::TransformException& ex) {
-                        ROS_WARN("Retry %d: Could not get transform for camera transformations: %s", i + 1, ex.what());
                         ros::Duration(0.5).sleep(); // Wait before retrying
                     }
                 }
@@ -390,7 +389,7 @@ class TiagoAction{
             transformStamped.header.stamp = ros::Time::now();
             ros::Duration timeout(1.0); 
             // Wait for transform from base_link to map to be available
-            for (int i = 0; i < 3; ++i) { // Retry 3 times if fails
+            for (int i = 0; i < 5000; ++i) { // Retry several times if fails
                 try {
                     transformStamped = tfBuffer.lookupTransform("map", "base_link", ros::Time(0), timeout);
                     break; // Exit loop on success
@@ -404,7 +403,7 @@ class TiagoAction{
             geometry_msgs::TransformStamped invTransformStamped;
             invTransformStamped.header.stamp = ros::Time::now();
             // Wait for transform from map to base_link to be available
-            for (int i = 0; i < 3; ++i) { // Retry 3 times if fails
+            for (int i = 0; i < 5000; ++i) { // Retry several times if fails
                 try {
                     invTransformStamped = tfBuffer.lookupTransform("base_link", "map", ros::Time(0), timeout);
                     break; // Exit loop on success
@@ -747,7 +746,7 @@ class TiagoAction{
                 // Wait for transform to be available
                 transformStamped.header.stamp = ros::Time::now();
                 // Wait for transform from base_link to map to be available
-                for (int i = 0; i < 3; ++i) { // Retry 3 times if fails
+                for (int i = 0; i < 5000; ++i) { // Retry several times if fails
                     try {
                         transformStamped = tfBuffer.lookupTransform("map", "base_link", ros::Time(0), timeout);
                         break; // Exit loop on success
