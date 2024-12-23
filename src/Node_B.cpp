@@ -494,7 +494,7 @@ class TiagoAction{
                     double table_distance = sqrt(pow(x,2) + pow(y,2));
                     double angle_threshold;
                     // set different thresholds based on table distance from Tiago
-                    if(table_distance < 1){
+                    if(table_distance < 1.5){
                         angle_threshold = M_PI/2+M_PI/8;
                     }
                     else if (table_distance < 2){
@@ -793,8 +793,10 @@ class TiagoAction{
                 feedback("Tiago is exploring ...");
                 remember_tiago_path = true; // start storing tiago's path
                 // wait for 7 s maximum for Tiago to reach goal pose
-                ac_.waitForResult(ros::Duration(7.0)); 
-                if(found_all_aprilTags) break; // go out of the while if all apriltags found
+                while(ac_.waitForResult(ros::Duration(7.0)))
+		{
+			if(found_all_aprilTags) break; // go out of the while if all apriltags found
+		}	
                 remember_tiago_path = false; // stop storing tiago's path 
                 feedback("Tiago has found a good spot to look for AprilTags!");
 
