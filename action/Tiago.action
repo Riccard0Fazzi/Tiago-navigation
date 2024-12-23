@@ -5,7 +5,6 @@ int64[] apriltag_ids
 
 # result: list of cubes' positions
 std_msgs/Header header
-int64 id
 geometry_msgs/PoseStamped[] aprilTags_poses
 ---
 # feedback
