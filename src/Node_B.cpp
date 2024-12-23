@@ -72,7 +72,7 @@ class TiagoAction{
         // of the callback waits for the end of the 1Hz
         // current loop and sets the goal as succeded to
         // Node_A, which terminates it. 
-        void tiagoActionCB(const ir2324_group_24::TiagoGoalConstPtr &goal) {
+        void tiagoActionCB(const ir2425_group_24::TiagoGoalConstPtr &goal) {
             // fix the rate at 1 Hz (meaning: "check if Tiago found all AprilTags every sec")
             ros::Rate r(1);
 
