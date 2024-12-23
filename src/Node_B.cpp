@@ -724,7 +724,6 @@ class TiagoAction{
                 // 360 ROTATION with move_base
                 // "checking around for AprilTags"  
               	rotation(); 
-                if(found_all_aprilTags) break; // go out of the while if all apriltags found
 
                 // only when in the corridor -> motion control law 
                 if(corridor)
@@ -734,7 +733,6 @@ class TiagoAction{
 
                 // find next exploring vector
                 exploringVectorFinder();
-                if(found_all_aprilTags) break; // go out of the while if all apriltags found
 
                 // tell move_base to go to that position
 
@@ -792,10 +790,7 @@ class TiagoAction{
                 feedback("Tiago is exploring ...");
                 remember_tiago_path = true; // start storing tiago's path
                 // wait for 7 s maximum for Tiago to reach goal pose
-                while(ac_.waitForResult(ros::Duration(7.0)))
-		{
-			if(found_all_aprilTags) break; // go out of the while if all apriltags found
-		}	
+                ac_.waitForResult(ros::Duration(7.0));
                 remember_tiago_path = false; // stop storing tiago's path 
                 feedback("Tiago has found a good spot to look for AprilTags!");
 
