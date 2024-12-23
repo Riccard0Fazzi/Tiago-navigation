@@ -1,12 +1,12 @@
 #include "ros/ros.h"
 #include "tiago_iaslab_simulation/Objs.h"  // Include the generated service header for Objs.srv
 #include <actionlib/client/simple_action_client.h>
-#include <ir2324_group_24/TiagoAction.h> // action file
+#include <ir2425_group_24/TiagoAction.h> // action file
 
-typedef actionlib::SimpleActionClient<ir2324_group_24::TiagoAction> Action_Client; // alias for the Action Client
+typedef actionlib::SimpleActionClient<ir2425_group_24::TiagoAction> Action_Client; // alias for the Action Client
 
 // Feedback callback function
-void feedbackCallback(const ir2324_group_24::TiagoFeedbackConstPtr &feedback) {
+void feedbackCallback(const ir2425_group_24::TiagoFeedbackConstPtr &feedback) {
     ROS_INFO("[FEEDBACK] %s", feedback->robot_status.c_str());
 }
 
@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 	ac.waitForServer();
 
 	// defining the object to store the goal
-	ir2324_group_24::TiagoGoal goal;
+	ir2425_group_24::TiagoGoal goal;
 
 	// assign to the goal object the vector of apriltag ids
 	goal.apriltag_ids = std::vector<int64_t>(srv.response.ids.begin(), srv.response.ids.end());
@@ -57,7 +57,7 @@ int main(int argc, char **argv)
 	// print all aprilTag IDs found and their poses wrt map
 	// Get the result
     if (state == actionlib::SimpleClientGoalState::SUCCEEDED) {
-        ir2324_group_24::TiagoResultConstPtr result_ = ac.getResult();
+        ir2425_group_24::TiagoResultConstPtr result_ = ac.getResult();
 		// Print header for clarity
 		std::cout << std::setw(15) << "AprilTag ID:"
 				<< std::setw(20) << "Position (x, y, z)"

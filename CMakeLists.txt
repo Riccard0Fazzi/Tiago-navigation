@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ir2324_group_24)
+project(ir2425_group_24)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 ## Find catkin macros and libraries

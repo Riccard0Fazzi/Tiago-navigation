@@ -2,7 +2,7 @@
 #include <move_base_msgs/MoveBaseAction.h>
 #include <actionlib/server/simple_action_server.h>
 #include <actionlib/client/simple_action_client.h>
-#include <ir2324_group_24/TiagoAction.h>
+#include <ir2425_group_24/TiagoAction.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Point.h>
@@ -23,7 +23,7 @@
 #include <cmath>
 
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient; // alias for the move_base action client
-typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
+typedef actionlib::SimpleActionServer<ir2425_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
 
 
 class TiagoAction{ 
@@ -33,8 +33,8 @@ class TiagoAction{
         // Class variables
 		ros::NodeHandle nh_; // Node_B handle
 		Action_Server as_;  // action server for the communication with Node_B (client)
-		ir2324_group_24::TiagoFeedback feedback_; // storing Tiago feedback_ during its journey
-		ir2324_group_24::TiagoResult result_; // vector storing the results to send to Node_A
+		ir2425_group_24::TiagoFeedback feedback_; // storing Tiago feedback_ during its journey
+		ir2425_group_24::TiagoResult result_; // vector storing the results to send to Node_A
 		std::string action_name_; //  storing the name of the node: Node_B
 		std::string tiago_status; // string storing Tiago's status to be set as feedback when necessary
 		std::vector<int> goal_; // vector storing the AprilTags ID's to be found
@@ -72,7 +72,7 @@ class TiagoAction{
         // of the callback waits for the end of the 1Hz
         // current loop and sets the goal as succeded to
         // Node_A, which terminates it. 
-        void tiagoActionCB(const ir2324_group_24::TiagoGoalConstPtr &goal) {
+        void tiagoActionCB(const ir2425_group_24::TiagoGoalConstPtr &goal) {
             // fix the rate at 1 Hz (meaning: "check if Tiago found all AprilTags every sec")
             ros::Rate r(1);
 
