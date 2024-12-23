@@ -2,7 +2,7 @@
 #include <move_base_msgs/MoveBaseAction.h>
 #include <actionlib/server/simple_action_server.h>
 #include <actionlib/client/simple_action_client.h>
-#include <ir2425_group_24/TiagoAction.h>
+#include <ir2324_group_24/TiagoAction.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/Point.h>
@@ -14,8 +14,8 @@
 #include <image_transport/image_transport.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
-#include <tf/LinearMath/Vector3.h> //Import Vector3 to define threedimensional vectors for linear and angular velocities
-#include <tf/tf.h> // For quaternion calculations
+#include <tf/LinearMath/Vector3.h> 
+#include <tf/tf.h> 
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <geometry_msgs/TransformStamped.h>
@@ -23,7 +23,7 @@
 #include <cmath>
 
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient; // alias for the move_base action client
-typedef actionlib::SimpleActionServer<ir2425_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
+typedef actionlib::SimpleActionServer<ir2324_group_24::TiagoAction> Action_Server; // alias for the Node_A communication Action Server
 
 
 class TiagoAction{ 
@@ -33,8 +33,8 @@ class TiagoAction{
         // Class variables
 		ros::NodeHandle nh_; // Node_B handle
 		Action_Server as_;  // action server for the communication with Node_B (client)
-		ir2425_group_24::TiagoFeedback feedback_; // storing Tiago feedback_ during its journey
-		ir2425_group_24::TiagoResult result_; // vector storing the results to send to Node_A
+		ir2324_group_24::TiagoFeedback feedback_; // storing Tiago feedback_ during its journey
+		ir2324_group_24::TiagoResult result_; // vector storing the results to send to Node_A
 		std::string action_name_; //  storing the name of the node: Node_B
 		std::vector<int> goal_; // vector storing the AprilTags ID's to be found
         std::vector<double> scan_ranges;// containing the values of the scanner
@@ -72,7 +72,7 @@ class TiagoAction{
         // of the callback waits for the end of the 1Hz
         // current loop and sets the goal as succeded to
         // Node_A, which terminates it. 
-        void tiagoActionCB(const ir2425_group_24::TiagoGoalConstPtr &goal) {
+        void tiagoActionCB(const ir2324_group_24::TiagoGoalConstPtr &goal) {
             // fix the rate at 1 Hz (meaning: "check if Tiago found all AprilTags every sec")
             ros::Rate r(1);
 
@@ -174,7 +174,7 @@ class TiagoAction{
                         tf2::doTransform(april_tag_pose_camera, april_tag_pose_map, transformStamped);
                         break; // Exit loop on success
                     } catch (tf2::TransformException& ex) {
-                        ROS_WARN("Retry %d: Could not get transform: %s", i + 1, ex.what());
+                        ROS_WARN("Retry %d: Could not get transform for camera transformations: %s", i + 1, ex.what());
                         ros::Duration(0.5).sleep(); // Wait before retrying
                     }
                 }
@@ -567,7 +567,7 @@ class TiagoAction{
             ros::Rate rate(10);  // 10 Hz
             bool found = false;
             avoid_rotation = false;
-            while(ros::ok() && !found){
+            while(ros::ok() && !found && !found_all_aprilTags){
                 feedback("Tiago is searching for the next exploration ...");
                 // compute next exploring vector
                 exploringVector(3.5,1); // 3.5 meters, 1 scan_angle_increment
@@ -584,7 +584,7 @@ class TiagoAction{
                 else{
                     // if valid, go out the while
                     found = true;
-                    feedback("Tiago found the next exploration!");
+                    feedback("Tiago has found the next exploration!");
                     avoid_rotation = false;
                     rate.sleep();
                 }
@@ -647,7 +647,8 @@ class TiagoAction{
             // Stop the robot after completing the rotation
             twist.angular.z = 0.0;
             vel_cmd_pub.publish(twist);
-            feedback("Tiago is ready to explore!");
+            if(!found_all_aprilTags)
+                feedback("Tiago is ready to explore!");
             // Wait for a short duration after stopping
             ros::Duration(2.0).sleep();  // Wait for 2 second
         }
@@ -659,7 +660,7 @@ class TiagoAction{
         // (while being in a corridor) 
         void corridorMode()
         {
-            feedback("Tiago found a corridor");
+            feedback("Tiago has found a corridor");
             feedback("[CORRIDOR MODE] activated");
             // set the rate of commands to Tiago
             ros::Rate r_corridor(10);
@@ -724,6 +725,7 @@ class TiagoAction{
                 // 360 ROTATION with move_base
                 // "checking around for AprilTags"  
               	rotation(); 
+                if(found_all_aprilTags) break; // go out of the while if all apriltags found
 
                 // only when in the corridor -> motion control law 
                 if(corridor)
@@ -733,6 +735,7 @@ class TiagoAction{
 
                 // find next exploring vector
                 exploringVectorFinder();
+                if(found_all_aprilTags) break; // go out of the while if all apriltags found
 
                 // tell move_base to go to that position
 
@@ -791,6 +794,7 @@ class TiagoAction{
                 remember_tiago_path = true; // start storing tiago's path
                 // wait for 7 s maximum for Tiago to reach goal pose
                 ac_.waitForResult(ros::Duration(7.0)); 
+                if(found_all_aprilTags) break; // go out of the while if all apriltags found
                 remember_tiago_path = false; // stop storing tiago's path 
                 feedback("Tiago has found a good spot to look for AprilTags!");
 
