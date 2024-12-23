@@ -492,7 +492,7 @@ class TiagoAction{
                     double x = table_pose_tiago.pose.position.x;
                     double y = table_pose_tiago.pose.position.y;
                     double table_distance = sqrt(pow(x,2) + pow(y,2));
-                    double angle_threshold; //
+                    double angle_threshold; 
                     // set different thresholds based on table distance from Tiago
                     if(table_distance < 1.5){
                         angle_threshold = M_PI/2+M_PI/8;
