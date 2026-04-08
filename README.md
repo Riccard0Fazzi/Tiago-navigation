@@ -37,7 +37,7 @@ The system must:
 - transform detections into the map frame  
 - return the positions of all requested targets  
 
-As described in the assignment :contentReference[oaicite:2]{index=2}, the robot must operate in an environment composed of multiple rooms and narrow passages, requiring robust navigation and perception.
+As described in the assignment, the robot must operate in an environment composed of multiple rooms and narrow passages, requiring robust navigation and perception.
 
 ---
 
@@ -128,7 +128,7 @@ This project is **not fully standalone**.
 
 It was developed within a specific simulation environment provided for the course assignment and depends on external ROS packages and simulation assets.
 
-To run the project, the full TIAGo simulation setup described in the assignment :contentReference[oaicite:3]{index=3} is required.
+To run the project, the full TIAGo simulation setup described in the assignment is required.
 
 ---
 
